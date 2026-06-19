@@ -1,5 +1,5 @@
-"AgentGuard Pipeline - scan -> filter -> fix, one command."
-import sys, json
+"AgentGuard Pipeline - scan -> confirm -> review -> fix, one command."
+import sys, json, os
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -49,10 +49,54 @@ def _scan_bandit(path):
     return result
 
 
-def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", use_bandit=False):
+def _confirm_filter(findings):
+    """Phase 2: Run confirmation agent on raw findings. CONFIRMED/REJECTED."""
+    if not findings:
+        return [], [], []
+    
+    from .scanner.llm_heuristic import confirm_sast_findings
+    
+    by_file = {}
+    for f in findings:
+        fpath = f.file if hasattr(f, 'file') else str(f)
+        by_file.setdefault(fpath, []).append({
+            'rule_id': f.rule_id if hasattr(f, 'rule_id') else '?',
+            'line': f.line if hasattr(f, 'line') else 0,
+            'message': f.message if hasattr(f, 'message') else '',
+            'code_snippet': (f.code_snippet or '')[:120] if hasattr(f, 'code_snippet') else '',
+        })
+    
+    confirmed, rejected, errors = [], [], []
+    for fpath, flist in by_file.items():
+        try:
+            code = Path(fpath).read_text(encoding='utf-8', errors='replace')
+        except Exception:
+            errors.extend(flist)
+            continue
+        results = confirm_sast_findings(fpath, code, flist, use_cache=True)
+        
+        for r in results:
+            orig = next((f for f in findings if (
+                (hasattr(f, 'file') and f.file == fpath) and
+                (hasattr(f, 'line') and f.line == r['line'])
+            )), None)
+            if orig is None:
+                orig = type('F', (), flist[0])()
+            if r['verdict'] == 'CONFIRMED':
+                if hasattr(orig, 'confidence'):
+                    orig.confidence = r['confidence']
+                confirmed.append(orig)
+            else:
+                rejected.append(orig)
+    
+    return confirmed, rejected, errors
+
+
+def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", use_bandit=False, use_labs=False):
     summary = {"path": path, "mode": mode, "engine": "bandit" if use_bandit else "builtin"}
 
-    print("[1/3] Scanning...")
+    # Phase 1: Scan
+    print("[1/4] Scanning...")
     print(f"      Engine: {'Bandit (100+ rules)' if use_bandit else 'AgentGuard built-in (11 rules)'}")
     if use_bandit:
         result = _scan_bandit(path)
@@ -62,22 +106,35 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
     total = result.total_findings
     print(f"      {total} findings ({result.critical_count} crit, {result.high_count} high)")
 
-    # ML filter only for built-in scanner; Bandit findings all keep confidence 1.0
     if not use_bandit:
         high_conf = [f for f in result.findings if f.confidence >= 0.5]
         low_conf = [f for f in result.findings if f.confidence < 0.5]
         print(f"      ML filtered: {len(low_conf)} low-confidence dropped")
-        for f in low_conf:
-            print(f"        - {f.rule_id} L{f.line}: {f.code_snippet[:50]}")
         current = high_conf
     else:
         current = result.findings
 
     summary["scan"] = {"total": total, "critical": result.critical_count, "high": result.high_count}
 
-    # Phase 2: DS Review
+    # Phase 2: Confirmation Agent (BEFORE DS Review)
+    if current:
+        print(f"\n[2/4] Confirmation agent on {len(current)} findings...")
+        try:
+            confirmed, rejected, cf_errors = _confirm_filter(current)
+            fp_removed = len(rejected)
+            print(f"      CONFIRMED:{len(confirmed)}  REJECTED:{len(rejected)}  ERR:{len(cf_errors)}")
+            if fp_removed > 0 and len(current) > 0:
+                print(f"      FP reduction: {fp_removed}/{len(current)} ({fp_removed/len(current):.0%})")
+            current = confirmed + cf_errors
+            summary["confirmation"] = {"confirmed": len(confirmed), "rejected": len(rejected)}
+        except Exception as e:
+            print(f"      Unavailable ({e})")
+    else:
+        print(f"\n[2/4] Confirmation skipped (no findings)")
+
+    # Phase 2.5: DS Review (fallback)
     if use_ds and current:
-        print(f"\n[2/3] DeepSeek reviewing {len(current)} findings...")
+        print(f"\n[2.5] DS Review on {len(current)} remaining...")
         try:
             from .scanner.llm_review import review_finding
             tp, fp, unk = [], [], []
@@ -97,22 +154,49 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
         except Exception as e:
             print(f"      DS unavailable ({e})")
     else:
-        print(f"\n[2/3] DS review skipped")
+        status = "skipped (use --ds)" if not use_ds else "skipped"
+        print(f"\n[2.5] DS review {status}")
+
+    # Phase 2.6: Labs
+    if use_labs:
+        print(f"\n[2.6] [Labs] heuristic review...")
+        try:
+            from .scanner.llm_heuristic import heuristic_scan_files, format_heuristic_results
+            sp = Path(path).resolve()
+            py_files = list(sp.rglob("*.py")) if sp.is_dir() else ([sp] if sp.suffix == ".py" else [])
+            if len(py_files) > 20:
+                py_files = py_files[:20]
+            file_map = {str(pf): pf.read_text(encoding="utf-8", errors="replace") for pf in py_files if pf.exists()}
+            existing_by_file = {}
+            for f in current:
+                fpath = f.file if hasattr(f, 'file') else str(f)
+                existing_by_file.setdefault(fpath, []).append({
+                    'rule_id': f.rule_id if hasattr(f, 'rule_id') else '?',
+                    'line': f.line if hasattr(f, 'line') else 0,
+                    'message': f.message if hasattr(f, 'message') else ''
+                })
+            labs_findings = heuristic_scan_files(file_map, existing_by_file)
+            if labs_findings:
+                print(format_heuristic_results(labs_findings))
+            summary["labs"] = {"files": len(file_map), "findings": len(labs_findings)}
+        except Exception as e:
+            print(f"      Unavailable ({e})")
+    else:
+        print(f"\n[2.6] Labs skipped (use --labs)")
 
     # Phase 3: Fix
-    print(f"\n[3/3] Fixing {len(current)} findings (mode={mode})...")
+    print(f"\n[3/4] Fixing {len(current)} findings (mode={mode})...")
     if not current:
         print("      Nothing to fix.")
         summary["fix"] = {"fixed_count": 0, "manual_count": 0, "files_changed": 0, "diff": ""}
         return summary
 
     fixer_input = [{"rule_id": f.rule_id, "line": f.line, "file": f.file, "snippet": f.code_snippet or ""} for f in current]
-    # Map Bandit rule IDs to AgentGuard-fixer compatible IDs
     if use_bandit:
         from .scanner.bandit_rules import map_bandit_finding
         fixer_input = [map_bandit_finding(f) for f in fixer_input]
     fix_result = fixer_run(fixer_input, mode=mode, write=write)
-    print(f"      Fixed: {fix_result['fixed_count']}  |  Manual: {fix_result['manual_count']}  |  Files: {fix_result['files_changed']}")
+    print(f"      Fixed: {fix_result['fixed_count']}  Manual: {fix_result['manual_count']}  Files: {fix_result['files_changed']}")
     if fix_result.get("diff"):
         print(fix_result["diff"])
     summary["fix"] = fix_result
@@ -121,9 +205,6 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
 
 def cmd_pipeline(args):
     pipeline(
-        path=args.path,
-        mode=args.mode,
-        use_ds=args.ds,
-        write=args.write,
-        use_bandit=getattr(args, "bandit", False),
+        path=args.path, mode=args.mode, use_ds=args.ds, write=args.write,
+        use_bandit=getattr(args, "bandit", False), use_labs=getattr(args, "labs", False),
     )

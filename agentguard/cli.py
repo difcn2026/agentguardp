@@ -45,6 +45,7 @@ def scan(
     verbose: bool = False,
     tier: str = None,
     files: list = None,
+    labs: bool = False,
 ):
     """Scan a directory or files for security issues."""
     if tier is None:
@@ -77,6 +78,41 @@ def scan(
     else:
         print(report_text)
 
+    # [Labs] LLM heuristic discovery
+    if labs:
+        print("\n─── [Labs] LLM Heuristic Discovery ───")
+        print("Running LLM heuristic review (this may take a while)...")
+        try:
+            from .scanner.llm_heuristic import heuristic_scan_files
+            file_map = {f: Path(f).read_text(encoding='utf-8', errors='replace') for f in result.findings[:1]}
+            # Collect unique scanned files
+            scanned_files = list(set(str(f.file) if hasattr(f, 'file') else str(f) for f in result.findings))
+            # To scan all python files, not just files with findings:
+            py_files = list(Path(path).rglob('*.py')) if Path(path).is_dir() else ([Path(path)] if Path(path).suffix == '.py' else [])
+            file_map = {}
+            for pf in py_files:
+                try:
+                    file_map[str(pf)] = pf.read_text(encoding='utf-8', errors='replace')
+                except Exception:
+                    pass
+            # Build existing findings map
+            existing_by_file = {}
+            for f in result.findings:
+                fpath = f.file if hasattr(f, 'file') else str(f)
+                existing_by_file.setdefault(fpath, []).append({
+                    'rule_id': f.rule_id if hasattr(f, 'rule_id') else '?',
+                    'line': f.line if hasattr(f, 'line') else 0,
+                    'message': f.message if hasattr(f, 'message') else ''
+                })
+            heuristic_findings = heuristic_scan_files(file_map, existing_by_file)
+            if heuristic_findings:
+                from .scanner.llm_heuristic import format_heuristic_results
+                print(format_heuristic_results(heuristic_findings))
+            else:
+                print("  No new risks found by LLM heuristic.")
+        except Exception as e:
+            print(f"  Labs heuristic unavailable: {e}")
+
     if not result.passed:
         sys.exit(1)
 
@@ -102,6 +138,7 @@ def main():
     scan_parser.add_argument("--tier", default=None, choices=["free", "pro"],
                              help="License tier (default: auto-detect from activated license)")
     scan_parser.add_argument("--version", action="version", version="AgentGuard Pro v0.3.0")
+    scan_parser.add_argument("--labs", action="store_true", help="Enable [Labs] LLM heuristic discovery (experimental)")
 
     # ---- activate ----
     activate_parser = subparsers.add_parser("activate", help="Activate a license key")
@@ -131,6 +168,7 @@ def main():
     pipe_parser.add_argument("--ds", action="store_true", help="Enable DeepSeek secondary review")
     pipe_parser.add_argument("--write", "-w", action="store_true", help="Write fixes to disk")
     pipe_parser.add_argument("--bandit", action="store_true", help="Use Bandit engine (100+ rules) instead of built-in")
+    pipe_parser.add_argument("--labs", action="store_true", help="Enable [Labs] LLM heuristic discovery (experimental)")
 
     args = parser.parse_args()
 
@@ -141,6 +179,7 @@ def main():
             output=args.output,
             verbose=args.verbose,
             tier=args.tier,
+            labs=getattr(args, 'labs', False),
         )
     elif args.command == "activate":
         license_activate(args.key)

@@ -73,6 +73,8 @@ class CodeScanner:
     TEST_PATH_PATTERNS = ["/test/", "\\test\\", "/tests/", "\\tests\\",
                           "test_", "_test.py"]
     SUPPRESS_COMMENTS = ["agentguard: ignore", "nosec", "agentguard: skip"]
+    # Files that are rule definitions themselves — scanning them creates self-referential FPs
+    SKIP_FILES = {"python_rules.py", "bandit_rules.py"}
     MAX_FILE_SIZE = 1_024_000
 
     def __init__(self, tier: str = "free", max_files: int = 100):
@@ -166,6 +168,8 @@ class CodeScanner:
             if entry.is_file() and entry.suffix in self.PYTHON_EXTS:
                 parts = set(entry.parts)
                 if not parts & self.SKIP_DIRS:
+                    if entry.name in self.SKIP_FILES:
+                        continue  # Rule definition files — self-referential FPs
                     if entry.stat().st_size <= self.MAX_FILE_SIZE:
                         files.append(entry)
         return files

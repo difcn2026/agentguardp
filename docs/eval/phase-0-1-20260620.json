@@ -1,0 +1,162 @@
+{
+  "date": "2026-06-20",
+  "model": "deepseek-v4-flash @ 127.0.0.1:57321",
+  "supervisor": "军师",
+  "phase0": {
+    "fixtures": {
+      "label": "Test Fixtures",
+      "files": 6,
+      "total": 1,
+      "C": 1,
+      "H": 0,
+      "M": 0,
+      "L": 0
+    },
+    "self": {
+      "label": "AgentGuard self-scan",
+      "files": 22,
+      "total": 23,
+      "C": 14,
+      "H": 5,
+      "M": 0,
+      "L": 2
+    }
+  },
+  "phase0_ds_review": {
+    "fixtures": {
+      "tp": 1,
+      "fp": 0,
+      "unk": 0,
+      "errors": 0
+    },
+    "self": {
+      "tp": 0,
+      "fp": 16,
+      "unk": 4,
+      "errors": 0
+    }
+  },
+  "phase1_confirmation": {
+    "fixtures": {
+      "label": "Fixtures",
+      "reviewed": 1,
+      "confirmed": 0,
+      "rejected": 1,
+      "precision": 0.0
+    },
+    "self": {
+      "label": "Self",
+      "reviewed": 4,
+      "confirmed": 0,
+      "rejected": 4,
+      "precision": 0.0
+    }
+  },
+  "phase1_heuristic": {
+    "test_logic_bug.py": {
+      "total": 0,
+      "types": [],
+      "items": []
+    },
+    "test_missing_auth.py": {
+      "total": 5,
+      "types": [
+        "logic_bug"
+      ],
+      "items": [
+        {
+          "risk_type": "logic_bug",
+          "L": "15-21",
+          "conf": 1.0
+        },
+        {
+          "risk_type": "logic_bug",
+          "L": "24-27",
+          "conf": 1.0
+        },
+        {
+          "risk_type": "logic_bug",
+          "L": "30-32",
+          "conf": 1.0
+        },
+        {
+          "risk_type": "logic_bug",
+          "L": "35-38",
+          "conf": 1.0
+        },
+        {
+          "risk_type": "logic_bug",
+          "L": "41-46",
+          "conf": 1.0
+        }
+      ]
+    },
+    "test_race_condition.py": {
+      "total": 1,
+      "types": [
+        "race_condition"
+      ],
+      "items": [
+        {
+          "risk_type": "race_condition",
+          "L": "7-9",
+          "conf": 1.0
+        }
+      ]
+    },
+    "test_swallowed_exception.py": {
+      "total": 0,
+      "types": [],
+      "items": []
+    },
+    "test_toctou.py": {
+      "total": 8,
+      "types": [
+        "missing_auth",
+        "toctou"
+      ],
+      "items": [
+        {
+          "risk_type": "missing_auth",
+          "L": "8-16",
+          "conf": 0.9
+        },
+        {
+          "risk_type": "toctou",
+          "L": "10-15",
+          "conf": 0.95
+        },
+        {
+          "risk_type": "missing_auth",
+          "L": "19-25",
+          "conf": 0.8
+        },
+        {
+          "risk_type": "toctou",
+          "L": "22-25",
+          "conf": 0.9
+        },
+        {
+          "risk_type": "missing_auth",
+          "L": "28-31",
+          "conf": 0.9
+        },
+        {
+          "risk_type": "toctou",
+          "L": "30-31",
+          "conf": 0.95
+        },
+        {
+          "risk_type": "missing_auth",
+          "L": "34-40",
+          "conf": 0.9
+        },
+        {
+          "risk_type": "toctou",
+          "L": "36-39",
+          "conf": 0.9
+        }
+      ]
+    }
+  }
+}
