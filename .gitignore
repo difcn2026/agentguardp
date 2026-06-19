@@ -10,3 +10,10 @@ license-pool.json
 !agentguard/license_public.pem
 .DS_Store
 Thumbs.db
+*.exe
+*.spec
+scan-output.json
+training_data/
+research/
+CURRENT-PROJECT.md
+-

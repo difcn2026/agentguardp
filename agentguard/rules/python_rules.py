@@ -1,4 +1,4 @@
-"""
+﻿"""
 AgentGuard Python Security Rules v0.1
 ======================================
 50 built-in rules covering the most common Agent-generated code vulnerabilities.
@@ -282,13 +282,120 @@ PYTHON_RULES: List[Rule] = [
         fix="Remove parentheses from assert statements, or use explicit condition checks.",
         category="general",
     ),
+
+    # ---- CATEGORY 8: XML Parsing (B313-B320) ----
+    Rule(
+        rule_id="PY070", name="xml-bad-cElementTree",
+        severity=Severity.MEDIUM,
+        description="xml.etree.cElementTree parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.etree\.cElementTree\.(parse|iterparse|fromstring|XMLParser)\s*\("],
+        fix="Use defusedxml.cElementTree instead of xml.etree.cElementTree.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY071", name="xml-bad-ElementTree",
+        severity=Severity.MEDIUM,
+        description="xml.etree.ElementTree parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.etree\.ElementTree\.(parse|iterparse|fromstring|XMLParser)\s*\("],
+        fix="Use defusedxml.ElementTree instead of xml.etree.ElementTree.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY072", name="xml-bad-expatreader",
+        severity=Severity.MEDIUM,
+        description="xml.sax.expatreader parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.sax\.expatreader\.create_parser\s*\("],
+        fix="Use defusedxml.sax instead of xml.sax.expatreader.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY073", name="xml-bad-expatbuilder",
+        severity=Severity.MEDIUM,
+        description="xml.dom.expatbuilder parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.dom\.expatbuilder\.(parse|parseString)\s*\("],
+        fix="Use defusedxml.dom instead of xml.dom.expatbuilder.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY074", name="xml-bad-sax",
+        severity=Severity.MEDIUM,
+        description="xml.sax parsing untrusted XML is vulnerable to XML attacks (billion laughs, XXE).",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.sax\.(parse|parseString|make_parser)\s*\("],
+        fix="Use defusedxml.sax instead of xml.sax.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY075", name="xml-bad-minidom",
+        severity=Severity.MEDIUM,
+        description="xml.dom.minidom parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.dom\.minidom\.(parse|parseString)\s*\("],
+        fix="Use defusedxml.minidom instead of xml.dom.minidom.",
+        category="xml",
+    ),
+    Rule(
+        rule_id="PY076", name="xml-bad-pulldom",
+        severity=Severity.MEDIUM,
+        description="xml.dom.pulldom parsing untrusted XML is vulnerable to XML attacks.",
+        cwe="CWE-611",
+        patterns=[r"\bxml\.dom\.pulldom\.(parse|parseString)\s*\("],
+        fix="Use defusedxml.pulldom instead of xml.dom.pulldom.",
+        category="xml",
+    ),
+
+    # ---- CATEGORY 9: Weak Cryptography (B304-B305) ----
+    Rule(
+        rule_id="PY080", name="insecure-ciphers",
+        severity=Severity.HIGH,
+        description="Use of insecure ciphers (ARC2, ARC4, Blowfish, DES, XOR, IDEA, CAST5, SEED, TripleDES).",
+        cwe="CWE-327",
+        patterns=[
+            r"\bCrypto\.Cipher\.(ARC2|ARC4|Blowfish|DES|XOR)\.new\s*\(",
+            r"\bCryptodome\.Cipher\.(ARC2|ARC4|Blowfish|DES|XOR)\.new\s*\(",
+            r"\bcryptography\.hazmat\.primitives\.ciphers\.algorithms\.(ARC4|Blowfish|IDEA|CAST5|SEED|TripleDES)\s*\(",
+        ],
+        fix="Use AES (128/256-bit) from cryptography.hazmat.primitives.ciphers.algorithms.AES.",
+        category="crypto",
+    ),
+    Rule(
+        rule_id="PY081", name="ecb-cipher-mode",
+        severity=Severity.MEDIUM,
+        description="ECB cipher mode reveals data patterns and is not semantically secure.",
+        cwe="CWE-327",
+        patterns=[r"\bcryptography\.hazmat\.primitives\.ciphers\.modes\.ECB\s*\("],
+        fix="Use CBC, GCM, or CTR mode instead of ECB.",
+        category="crypto",
+    ),
+
+    # ---- CATEGORY 10: Insecure Protocols (B312, B321) ----
+    Rule(
+        rule_id="PY082", name="insecure-protocols",
+        severity=Severity.HIGH,
+        description="Use of insecure plaintext protocols (Telnet, FTP). Use SSH/SCP/SFTP instead.",
+        cwe="CWE-319",
+        patterns=[
+            r"\btelnetlib\.",  # telnetlib.*
+            r"\bftplib\.",     # ftplib.*
+            r"\bfrom\s+telnetlib\s+import",
+            r"\bfrom\s+ftplib\s+import",
+            r"\bimport\s+telnetlib",
+            r"\bimport\s+ftplib",
+        ],
+        fix="Replace Telnet with SSH (paramiko/fabric). Replace FTP with SFTP/SCP.",
+        category="network",
+    ),
 ]
 
 
 # ============================================================
 # Free tier: first 25 rules; Pro tier: all 50+
 # ============================================================
-FREE_RULE_COUNT = 25
+FREE_RULE_COUNT = 34
 
 
 def get_rules(tier: str = "free") -> List[Rule]:

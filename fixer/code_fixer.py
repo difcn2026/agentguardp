@@ -276,6 +276,15 @@ def run(findings_input, mode: str = "safe", write: bool = False) -> dict:
     else:
         findings = findings_input
 
+    # Normalize: accept {"findings": [...]} wrapper from agentguard scan --format json
+    if isinstance(findings, dict):
+        findings = findings.get("findings", [])
+
+    # Normalize field names: scanner uses code_snippet, fixer uses snippet
+    for f in findings:
+        if "code_snippet" in f and "snippet" not in f:
+            f["snippet"] = f["code_snippet"]
+
     # Resolve relative paths: relative to findings file, or CWD
     base_dir = Path.cwd()
     if isinstance(findings_input, str):

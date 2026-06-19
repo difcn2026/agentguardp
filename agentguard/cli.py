@@ -33,6 +33,8 @@ from .license_verify import (
     get_machine_hash,
 )
 from fixer.code_fixer import run as fixer_run
+from .pipeline import cmd_pipeline
+from .desktop import serve as desktop_serve
 
 
 def scan(
@@ -107,6 +109,7 @@ def main():
 
     # ---- status ----
     subparsers.add_parser("status", help="Show license status and machine hash")
+    subparsers.add_parser("serve", help="Start desktop web GUI")
 
     # ---- deactivate ----
     subparsers.add_parser("deactivate", help="Deactivate license on this machine")
@@ -118,6 +121,16 @@ def main():
                            choices=["safe", "fix", "dry-run"],
                            help="Fix mode: safe, fix, dry-run (default)")
     fix_parser.add_argument("--write", "-w", action="store_true", help="Write fixes to disk")
+
+    # ---- pipeline (scan + filter + fix) ----
+    pipe_parser = subparsers.add_parser("pipeline", aliases=["auto-fix"], help="Full pipeline: scan -> filter -> fix")
+    pipe_parser.add_argument("path", default=".", nargs="?", help="Directory or file to scan")
+    pipe_parser.add_argument("--mode", "-m", default="dry-run",
+                           choices=["safe", "fix", "dry-run"],
+                           help="Fix mode (default: dry-run)")
+    pipe_parser.add_argument("--ds", action="store_true", help="Enable DeepSeek secondary review")
+    pipe_parser.add_argument("--write", "-w", action="store_true", help="Write fixes to disk")
+    pipe_parser.add_argument("--bandit", action="store_true", help="Use Bandit engine (100+ rules) instead of built-in")
 
     args = parser.parse_args()
 
@@ -146,6 +159,10 @@ def main():
             print(result['diff'])
         for r in result.get('results', []):
             print(f"  [{r['rule_id']}] L{r['line']}: {r.get('reason', r.get('fixed', ''))}")
+    elif args.command in ("pipeline", "auto-fix"):
+        cmd_pipeline(args)
+    elif args.command == "serve":
+        desktop_serve()
     else:
         parser.print_help()
 

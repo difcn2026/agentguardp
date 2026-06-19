@@ -15,7 +15,7 @@ import ast
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 
-# ── Feature Extractors ──────────────────────────────────────────────
+# 鈹€鈹€ Feature Extractors 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 # Indicators that suggest a TRUE positive (higher confidence)
 TRUE_POSITIVE_INDICATORS = [
@@ -50,6 +50,9 @@ FALSE_POSITIVE_INDICATORS = [
     (r"(mock|patch|MagicMock|unittest\.mock)\b", -0.3),
     # Documentation strings
     (r'""".*?\b(eval|exec|os\.system|pickle\.loads).*?"""', -0.35),
+    # Hardcoded literal to deserialization functions (not user input)
+    (r'(pickle|marshal)\.loads?\(b', -0.6),
+    (r'(pickle|marshal)\.loads?\([\'"`]', -0.6),
 ]
 
 # Context features extracted via AST
@@ -127,7 +130,7 @@ def analyze_finding_context(
 def rescore_confidence(
     base_confidence: float,
     adjustments: Dict[str, float],
-    max_adjustment: float = 0.5,
+    max_adjustment: float = 0.7,
 ) -> Tuple[float, List[str]]:
     """
     Apply ML-informed adjustments to a finding's confidence score.
@@ -250,7 +253,7 @@ class MLFilter:
         return kept, filtered
 
 
-# ── Training Data Generator (for future ML model) ────────────────────
+# 鈹€鈹€ Training Data Generator (for future ML model) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 def generate_training_features(
     finding,

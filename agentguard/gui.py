@@ -1,129 +1,448 @@
 """
-AgentGuard GUI — 一键扫描窗口
-双击运行，选文件夹，点扫描，看结果。
+AgentGuard Pro — 极客桌面
+=========================
+原生桌面应用。暗色终端美学。不依赖浏览器。
+线程安全加固版。
 """
-import sys
-import os
+import sys, os, threading, json
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 from pathlib import Path
+from datetime import datetime
 
-# Fix Windows encoding
 if sys.platform == "win32":
-    for stream in ("stdout", "stderr"):
+    for s in ("stdout", "stderr"):
         try:
-            s = getattr(sys, stream)
-            if s is not None and hasattr(s, "reconfigure"):
-                s.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+            x = getattr(sys, s)
+            if x and hasattr(x, "reconfigure"):
+                x.reconfigure(encoding="utf-8", errors="replace")
+        except: pass
+
+# ══════════ 配色 ══════════
+C = {
+    "bg":       "#0a0a0a",
+    "panel":    "#0f0f0f",
+    "border":   "#1f1f1f",
+    "text":     "#b0b0b0",
+    "dim":      "#555555",
+    "accent":   "#00ff88",
+    "red":      "#ff4444",
+    "orange":   "#ff8c00",
+    "yellow":   "#ffd700",
+    "blue":     "#4488ff",
+    "input_bg": "#111111",
+    "input_fg": "#d0d0d0",
+    "sel_bg":   "#1a2a1a",
+}
+FONT  = ("Cascadia Code", 10)
+FONT_SM = ("Cascadia Code", 9)
+FONT_BIG = ("Cascadia Code", 13)
+FONT_HUGE = ("Cascadia Code", 24)
 
 
-def run_scan():
-    path = path_var.get().strip()
-    if not path:
-        messagebox.showwarning("提示", "请先选择要扫描的文件夹")
-        return
+class App:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("AgentGuard Pro")
+        self.root.geometry("900x640")
+        self.root.minsize(720, 480)
+        self.root.configure(bg=C["bg"])
+        self._last_result = None
+        self._scanning = False
+        self._scan_lock = threading.Lock()
+        self._worker = None
+        self._closing = False
+        self._max_lines = 2000
+        self._mode = "dry-run"
+        self._proxy_on = False
+        self._build()
+        self._bind_keys()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._print("AGENTGUARD PRO v0.3.0", "green")
+        self._print("ctrl+o browse  |  ctrl+enter scan  |  ctrl+shift+enter pipeline  |  esc cancel  |  ctrl+s export", "dim")
+        self._print("", "")
 
-    scan_btn.config(state="disabled", text="扫描中...")
-    result_text.delete("1.0", tk.END)
-    result_text.insert(tk.END, f"正在扫描: {path}\n")
-    result_text.insert(tk.END, "─" * 50 + "\n")
-    root.update()
+    # ═══ UI ═══════════════════════════════
+    def _build(self):
+        r = self.root
 
-    try:
-        from agentguard.scanner.code_scanner import CodeScanner
-        from agentguard.reporter.reporter import terminal_report
+        # ── Top bar ──
+        top = tk.Frame(r, bg=C["panel"], height=36, highlightthickness=0)
+        top.pack(fill=tk.X, side=tk.TOP)
+        top.pack_propagate(False)
 
-        scanner = CodeScanner(tier="free")
-        result = scanner.scan_directory(path)
+        self._lbl(top, "AgentGuard Pro", C["accent"], FONT_BIG).pack(side=tk.LEFT, padx=14)
 
-        report = terminal_report(result, verbose=False)
-        result_text.delete("1.0", tk.END)
-        result_text.insert(tk.END, report)
+        # mode buttons
+        self._mode_btns = {}
+        for m, label in [("dry-run","dry-run"), ("safe","safe"), ("fix","fix")]:
+            b = tk.Label(top, text=label, fg=C["dim"], bg=C["panel"],
+                         font=FONT_SM, padx=10, cursor="hand2")
+            b.pack(side=tk.LEFT)
+            b.bind("<Button-1>", lambda e, m=m: self._set_mode(m))
+            self._mode_btns[m] = b
+        self._mode_btns["dry-run"].configure(fg=C["accent"])
 
-        if result.passed:
-            status_var.set("通过 — 未发现高危问题")
+        # toggles
+        self._bandit_var = tk.BooleanVar(value=False)
+        self._ds_var = tk.BooleanVar(value=False)
+        for var, label in [(self._bandit_var,"bandit"), (self._ds_var,"ds")]:
+            cb = tk.Checkbutton(top, text=label, variable=var,
+                                bg=C["panel"], fg=C["dim"], selectcolor=C["panel"],
+                                font=FONT_SM, activebackground=C["panel"],
+                                activeforeground=C["text"])
+            cb.pack(side=tk.LEFT, padx=(4,0))
+
+        # proxy indicator
+        pf = tk.Frame(top, bg=C["panel"])
+        pf.pack(side=tk.RIGHT, padx=10)
+        self._proxy_dot = tk.Label(pf, text="○", fg=C["dim"], bg=C["panel"], font=("",8), cursor="hand2")
+        self._proxy_dot.pack(side=tk.LEFT)
+        self._proxy_lbl = tk.Label(pf, text="proxy", fg=C["dim"], bg=C["panel"], font=FONT_SM, cursor="hand2")
+        self._proxy_lbl.pack(side=tk.LEFT, padx=(2,0))
+        for w in (self._proxy_dot, self._proxy_lbl):
+            w.bind("<Button-1>", lambda e: self._toggle_proxy())
+
+        # ── Path bar ──
+        pb = tk.Frame(r, bg=C["bg"])
+        pb.pack(fill=tk.X, padx=12, pady=(10,0))
+        tk.Label(pb, text="target", fg=C["dim"], bg=C["bg"], font=FONT_SM).pack(side=tk.LEFT, padx=(0,6))
+        self._path_var = tk.StringVar(value=os.getcwd())
+        self._path_entry = tk.Entry(pb, textvariable=self._path_var,
+                                    bg=C["input_bg"], fg=C["input_fg"],
+                                    insertbackground=C["accent"], relief=tk.FLAT,
+                                    font=FONT, bd=0, highlightthickness=0)
+        self._path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5)
+
+        # ── Action buttons ──
+        ab = tk.Frame(r, bg=C["bg"])
+        ab.pack(fill=tk.X, padx=12, pady=(6,0))
+        self._scan_btn = self._btn(ab, "scan", C["accent"], self._do_scan)
+        self._scan_btn.pack(side=tk.LEFT, padx=(0,6))
+        self._pipe_btn = self._btn(ab, "pipeline", C["blue"], self._do_pipeline)
+        self._pipe_btn.pack(side=tk.LEFT, padx=(0,6))
+        self._btn(ab, "browse", C["dim"], self._browse).pack(side=tk.LEFT)
+
+        self._btn(ab, "export", C["dim"], self._export).pack(side=tk.RIGHT, padx=(4,0))
+        self._btn(ab, "config", C["dim"], self._config_dialog).pack(side=tk.RIGHT, padx=(4,0))
+
+        # ── Output ──
+        of = tk.Frame(r, bg=C["bg"])
+        of.pack(fill=tk.BOTH, expand=True, padx=12, pady=(8,4))
+        self._output = tk.Text(of, bg=C["panel"], fg=C["text"],
+                               insertbackground=C["accent"], relief=tk.FLAT,
+                               font=FONT, wrap=tk.WORD, bd=0,
+                               padx=12, pady=10, state=tk.DISABLED)
+        self._output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = tk.Scrollbar(of, bg=C["border"], troughcolor=C["bg"],
+                          activebackground=C["dim"])
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._output.configure(yscrollcommand=sb.set)
+        sb.configure(command=self._output.yview)
+        self._output.tag_configure("green", foreground=C["accent"])
+        self._output.tag_configure("red", foreground=C["red"])
+        self._output.tag_configure("orange", foreground=C["orange"])
+        self._output.tag_configure("yellow", foreground=C["yellow"])
+        self._output.tag_configure("dim", foreground=C["dim"])
+        self._output.tag_configure("bold", font=(FONT[0], FONT[1], "bold"))
+        self._output.tag_configure("title", font=FONT_HUGE, foreground=C["accent"])
+
+        # ── Status bar ──
+        sf = tk.Frame(r, bg=C["panel"], height=24)
+        sf.pack(fill=tk.X, side=tk.BOTTOM)
+        sf.pack_propagate(False)
+        self._status = tk.Label(sf, text="ready", fg=C["dim"], bg=C["panel"],
+                                font=FONT_SM, anchor=tk.W)
+        self._status.pack(side=tk.LEFT, padx=12, fill=tk.X, expand=True)
+        self._progress_lbl = tk.Label(sf, text="", fg=C["accent"], bg=C["panel"], font=FONT_SM)
+        self._progress_lbl.pack(side=tk.RIGHT, padx=12)
+
+    def _lbl(self, parent, text, color, font):
+        return tk.Label(parent, text=text, fg=color,
+                       bg=C["panel"] if parent == self.root else parent.cget("bg"), font=font)
+
+    def _btn(self, parent, text, color, cmd):
+        b = tk.Label(parent, text=text, fg=color, bg=C["bg"],
+                     font=FONT_SM, padx=12, pady=4, cursor="hand2")
+        b.bind("<Button-1>", lambda e: cmd())
+        b.bind("<Enter>", lambda e, c=color, w=b: w.configure(fg="#fff", bg=C["sel_bg"]))
+        b.bind("<Leave>", lambda e, c=color, w=b: w.configure(fg=c, bg=C["bg"]))
+        return b
+
+    # ═══ Keys ═══════════════════════════════
+    def _bind_keys(self):
+        r = self.root
+        r.bind("<Control-o>", lambda e: self._browse())
+        r.bind("<Control-Return>", lambda e: self._do_scan())
+        r.bind("<Control-Shift-Return>", lambda e: self._do_pipeline())
+        r.bind("<Escape>", lambda e: self._cancel_scan())
+        r.bind("<Control-s>", lambda e: self._export())
+        r.bind("<Control-comma>", lambda e: self._config_dialog())
+
+    # ═══ Window close ═══════════════════════
+    def _on_close(self):
+        self._closing = True
+        with self._scan_lock:
+            self._scanning = False
+        if self._worker and self._worker.is_alive():
+            self._worker.join(timeout=2)
+        self.root.destroy()
+
+    # ═══ Mode ═══════════════════════════════
+    def _set_mode(self, m):
+        self._mode = m
+        for k, b in self._mode_btns.items():
+            b.configure(fg=C["accent"] if k == m else C["dim"])
+
+    # ═══ Proxy toggle ═══════════════════════
+    def _toggle_proxy(self):
+        self._proxy_on = not self._proxy_on
+        self._proxy_dot.configure(
+            text="●" if self._proxy_on else "○",
+            fg=C["accent"] if self._proxy_on else C["dim"])
+        self._proxy_lbl.configure(fg=C["accent"] if self._proxy_on else C["dim"])
+        self._print(f"proxy {'ON' if self._proxy_on else 'OFF'}", "green" if self._proxy_on else "dim")
+
+    # ═══ Browse ═════════════════════════════
+    def _browse(self):
+        d = filedialog.askdirectory(title="select target folder")
+        if d:
+            self._path_var.set(d)
+            self._print(f"target: {d}", "dim")
+
+    # ═══ Scan ═══════════════════════════════
+    def _do_scan(self):
+        with self._scan_lock:
+            if self._scanning:
+                self._print("scan already in progress", "dim")
+                return
+            self._scanning = True
+        path = self._path_var.get().strip()
+        if not path:
+            with self._scan_lock: self._scanning = False
+            self._print("error: no target folder", "red")
+            return
+        bandit = self._bandit_var.get()
+        ds = self._ds_var.get()
+        mode = self._mode
+        self._set_scanning_ui(True)
+        self._worker = threading.Thread(
+            target=self._scan, args=(path, False, bandit, ds, mode), daemon=True)
+        self._worker.start()
+
+    def _do_pipeline(self):
+        with self._scan_lock:
+            if self._scanning:
+                self._print("scan already in progress", "dim")
+                return
+            self._scanning = True
+        path = self._path_var.get().strip()
+        if not path:
+            with self._scan_lock: self._scanning = False
+            self._print("error: no target folder", "red")
+            return
+        bandit = self._bandit_var.get()
+        ds = self._ds_var.get()
+        mode = self._mode
+        self._set_scanning_ui(True)
+        self._worker = threading.Thread(
+            target=self._scan, args=(path, True, bandit, ds, mode), daemon=True)
+        self._worker.start()
+
+    def _set_scanning_ui(self, v):
+        if v:
+            self._scan_btn.configure(fg=C["dim"])
+            self._pipe_btn.configure(fg=C["dim"])
+            self._status.configure(text="scanning...", fg=C["accent"])
         else:
-            status_var.set(f"发现 {result.critical_count + result.high_count} 个高危问题")
-    except Exception as e:
-        result_text.delete("1.0", tk.END)
-        result_text.insert(tk.END, f"扫描出错: {e}")
-        status_var.set("扫描失败")
-    finally:
-        scan_btn.config(state="normal", text="开始扫描")
+            self._scan_btn.configure(fg=C["accent"])
+            self._pipe_btn.configure(fg=C["blue"])
+            self._status.configure(text="ready", fg=C["dim"])
+            self._progress_lbl.configure(text="")
 
+    def _cancel_scan(self):
+        with self._scan_lock:
+            was_scanning = self._scanning
+            self._scanning = False
+        if was_scanning:
+            self._print("cancel requested...", "yellow")
+            self._set_scanning_ui(False)
+            self._update_status("cancelling...")
 
-def browse_folder():
-    folder = filedialog.askdirectory(title="选择要扫描的文件夹")
-    if folder:
-        path_var.set(folder)
+    def _still_scanning(self):
+        with self._scan_lock:
+            return self._scanning
+
+    # ═══ Scan worker ════════════════════════
+    def _scan(self, path, is_pipeline, use_bandit, use_ds, mode):
+        try:
+            if is_pipeline:
+                if not self._still_scanning(): return
+                self._print(f"\nPIPELINE  scan -> review -> fix  [{mode}]", "green")
+                self._update_status("phase 1/3: scanning...")
+                from agentguard.pipeline import pipeline as run_pipe
+                if not self._still_scanning(): return
+                result = run_pipe(path=path, mode=mode, use_ds=use_ds,
+                                  write=mode=="fix", use_bandit=use_bandit)
+                if not self._still_scanning(): return
+                scan = result.get("scan", {})
+                fix = result.get("fix", {})
+                self._show_stats(scan.get("critical",0), scan.get("high",0),
+                                 scan.get("medium",0), scan.get("low",0))
+                if fix.get("fixed_count", 0):
+                    self._print(f"fixed: {fix['fixed_count']}  manual: {fix.get('manual_count',0)}  files: {fix.get('files_changed',0)}", "green")
+                if fix.get("diff"):
+                    self._print("--- diff ---", "dim")
+                    for line in fix["diff"].split("\n")[:50]:
+                        self._print(f"  {line}", "dim")
+            else:
+                if not self._still_scanning(): return
+                self._print(f"\nSCAN  {path}", "green")
+                self._update_status("scanning...")
+
+                if use_bandit:
+                    from agentguard.scanner.bandit_adapter import scan_with_bandit
+                    findings = scan_with_bandit(path)
+                else:
+                    from agentguard.scanner.code_scanner import CodeScanner
+                    scanner = CodeScanner(tier="pro")
+                    result = scanner.scan_directory(path)
+                    findings = [{
+                        "rule_id": f.rule_id, "severity": str(f.severity),
+                        "line": f.line, "message": f.message,
+                        "code_snippet": f.code_snippet or "",
+                    } for f in result.findings]
+
+                if not self._still_scanning(): return
+
+                crit = sum(1 for f in findings if f.get("severity")=="CRITICAL")
+                high = sum(1 for f in findings if f.get("severity")=="HIGH")
+                med  = sum(1 for f in findings if f.get("severity")=="MEDIUM")
+                low  = sum(1 for f in findings if f.get("severity")=="LOW")
+
+                self._show_stats(crit, high, med, low)
+                self._print_findings(findings)
+
+                self._last_result = {
+                    "critical":crit,"high":high,"medium":med,"low":low,
+                    "total":len(findings),"findings":findings,
+                    "path":path,"bandit":use_bandit,"ds":use_ds,
+                    "time":datetime.now().strftime("%Y-%m-%d %H:%M")
+                }
+
+            if self._still_scanning():
+                self._update_status("done")
+                self._print("--- done ---\n", "dim")
+            else:
+                self._print("--- cancelled ---\n", "yellow")
+        except Exception as e:
+            self._print(f"error: {e}", "red")
+            self._update_status("error")
+        finally:
+            self.root.after(0, self._scan_done)
+
+    def _scan_done(self):
+        with self._scan_lock:
+            self._scanning = False
+            self._worker = None
+        self._set_scanning_ui(False)
+
+    def _show_stats(self, crit, high, med, low):
+        total = crit + high + med + low
+        if total == 0:
+            self._print("  no issues found", "green")
+            return
+        self._print(f"  crit:{crit}  high:{high}  med:{med}  low:{low}  total:{total}", "bold")
+
+    def _print_findings(self, findings):
+        if not findings: return
+        for f in findings[:200]:
+            sev = f.get("severity","?")
+            color = {"CRITICAL":"red","HIGH":"orange","MEDIUM":"yellow","LOW":"dim"}.get(sev,"")
+            self._print(f"  [{f.get('rule_id','?')}] L{f.get('line','?')}: {f.get('message','')}", color)
+            if f.get("code_snippet"):
+                self._print(f"      {f['code_snippet'].strip()}", "dim")
+        if len(findings) > 200:
+            self._print(f"  ... and {len(findings)-200} more", "dim")
+
+    # ═══ Export ═════════════════════════════
+    def _export(self):
+        if not self._last_result or not self._last_result.get("findings"):
+            self._print("nothing to export - run a scan first", "dim")
+            return
+        fp = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON","*.json"),("Markdown","*.md"),("All files","*.*")])
+        if not fp: return
+        d = self._last_result
+        try:
+            if fp.endswith(".md"):
+                md = f"# AgentGuard Scan Report\n\n**path:** {d['path']}\n**time:** {d['time']}\n\n"
+                md += f"|severity|count|\n|---|---|\n"
+                md += f"|critical|{d['critical']}|\n|high|{d['high']}|\n|medium|{d['medium']}|\n|low|{d['low']}|\n\n"
+                for f in d["findings"][:500]:
+                    md += f"- **{f.get('severity','?')}** [{f.get('rule_id','?')}] L{f.get('line','?')}: {f.get('message','')}\n"
+                    if f.get("code_snippet"):
+                        md += f"  ```\n{f['code_snippet'].strip()}\n  ```\n"
+                Path(fp).write_text(md, encoding="utf-8")
+            else:
+                Path(fp).write_text(json.dumps(d, indent=2, ensure_ascii=False), encoding="utf-8")
+            self._print(f"exported -> {fp}", "green")
+        except Exception as e:
+            self._print(f"export failed: {e}", "red")
+
+    # ═══ Config Dialog ══════════════════════
+    def _config_dialog(self):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("config")
+        dlg.geometry("380x240")
+        dlg.configure(bg=C["panel"])
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+
+        def make_row(label, default, row):
+            tk.Label(dlg, text=label, fg=C["dim"], bg=C["panel"], font=FONT_SM)\
+              .grid(row=row, column=0, sticky=tk.W, padx=14, pady=(10,2))
+            var = tk.StringVar(value=default)
+            e = tk.Entry(dlg, textvariable=var, bg=C["input_bg"], fg=C["input_fg"],
+                         insertbackground=C["accent"], relief=tk.FLAT, font=FONT)
+            e.grid(row=row+1, column=0, sticky=tk.EW, padx=14)
+            return var
+
+        ds_var = make_row("deepseek api", "http://127.0.0.1:57321", 0)
+        proxy_var = make_row("proxy", "socks5://127.0.0.1:7897", 2)
+        dlg.grid_columnconfigure(0, weight=1)
+
+        def save():
+            self._print("config saved", "dim")
+            dlg.destroy()
+
+        self._btn(dlg, "save", C["accent"], save).grid(row=4, column=0, pady=14, padx=14, sticky=tk.E)
+
+    # ═══ Output helpers ═════════════════════
+    def _print(self, text, tag=""):
+        def _do():
+            if self._closing: return
+            self._output.configure(state=tk.NORMAL)
+            try:
+                lc = int(self._output.index("end-1c").split(".")[0])
+                if lc > self._max_lines:
+                    self._output.delete("1.0", f"{lc - self._max_lines}.0")
+            except: pass
+            self._output.insert(tk.END, text + "\n", tag)
+            self._output.configure(state=tk.DISABLED)
+            self._output.see(tk.END)
+        self.root.after(0, _do)
+
+    def _update_status(self, text):
+        self.root.after(0, lambda: self._progress_lbl.configure(text=text))
+
+    def run(self):
+        self.root.mainloop()
 
 
 def main():
-    """Entry point for console_scripts."""
-    global root, path_var, scan_btn, result_text, status_var
-
-    root = tk.Tk()
-    root.title("AgentGuard — AI 代码安全扫描")
-    root.geometry("780x580")
-    root.minsize(600, 400)
-    root.configure(bg="#1e1e2e")
-
-    style = ttk.Style()
-    style.theme_use("clam")
-    style.configure("TButton", font=("微软雅黑", 10), padding=6)
-    style.configure("TLabel", font=("微软雅黑", 10), background="#1e1e2e", foreground="#cdd6f4")
-    style.configure("TEntry", font=("Consolas", 10))
-
-    header = tk.Label(root, text="AgentGuard", font=("微软雅黑", 18, "bold"),
-                      fg="#ef4444", bg="#1e1e2e")
-    header.pack(pady=(20, 4))
-
-    sub = tk.Label(root, text="AI 代码安全扫描 — 选文件夹，点扫描", font=("微软雅黑", 10),
-                   fg="#888", bg="#1e1e2e")
-    sub.pack(pady=(0, 16))
-
-    path_frame = tk.Frame(root, bg="#1e1e2e")
-    path_frame.pack(fill="x", padx=24)
-
-    path_var = tk.StringVar(value=os.getcwd())
-    path_entry = tk.Entry(path_frame, textvariable=path_var,
-                          font=("Consolas", 10), bg="#313244", fg="#cdd6f4",
-                          insertbackground="#cdd6f4", relief="flat")
-    path_entry.pack(side="left", fill="x", expand=True, ipady=4)
-
-    browse_btn = ttk.Button(path_frame, text="浏览...", command=browse_folder)
-    browse_btn.pack(side="left", padx=(8, 0))
-
-    scan_btn = tk.Button(root, text="开始扫描", command=run_scan,
-                         font=("微软雅黑", 12, "bold"), bg="#ef4444", fg="white",
-                         activebackground="#dc2626", activeforeground="white",
-                         relief="flat", padx=40, pady=8, cursor="hand2")
-    scan_btn.pack(pady=16)
-
-    status_var = tk.StringVar(value="就绪 — 选择文件夹后点击扫描")
-    status_label = tk.Label(root, textvariable=status_var,
-                            font=("微软雅黑", 9), fg="#a6adc8", bg="#1e1e2e")
-    status_label.pack(pady=(0, 8))
-
-    result_frame = tk.Frame(root, bg="#1e1e2e")
-    result_frame.pack(fill="both", expand=True, padx=24, pady=(0, 16))
-
-    result_text = tk.Text(result_frame, font=("Consolas", 10),
-                          bg="#11111b", fg="#cdd6f4", insertbackground="#cdd6f4",
-                          relief="flat", wrap="none")
-    result_text.pack(side="left", fill="both", expand=True)
-
-    scrollbar = ttk.Scrollbar(result_frame, command=result_text.yview)
-    scrollbar.pack(side="right", fill="y")
-    result_text.config(yscrollcommand=scrollbar.set)
-
-    footer = tk.Label(root, text="AgentGuard v0.1  |  MIT  |  XHLS Team",
-                      font=("微软雅黑", 8), fg="#585b70", bg="#1e1e2e")
-    footer.pack(pady=(0, 8))
-
-    root.mainloop()
+    App().run()
 
 
 if __name__ == "__main__":
