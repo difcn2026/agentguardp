@@ -1,0 +1,74 @@
+[
+  {
+    "rule_id": "PY004",
+    "line": 14,
+    "file": "sample_bad.py",
+    "snippet": "shell=True"
+  },
+  {
+    "rule_id": "PY006",
+    "line": 18,
+    "file": "sample_bad.py",
+    "snippet": "yaml.load("
+  },
+  {
+    "rule_id": "PY001",
+    "line": 19,
+    "file": "sample_bad.py",
+    "snippet": "eval("
+  },
+  {
+    "rule_id": "PY030",
+    "line": 22,
+    "file": "sample_bad.py",
+    "snippet": "hashlib.md5"
+  },
+  {
+    "rule_id": "PY032",
+    "line": 23,
+    "file": "sample_bad.py",
+    "snippet": "random.randint"
+  },
+  {
+    "rule_id": "PY012",
+    "line": 26,
+    "file": "sample_bad.py",
+    "snippet": "tempfile.mktemp"
+  },
+  {
+    "rule_id": "PY042",
+    "line": 30,
+    "file": "sample_bad.py",
+    "snippet": "verify=False"
+  },
+  {
+    "rule_id": "PY005",
+    "line": 33,
+    "file": "sample_bad.py",
+    "snippet": "pickle.loads"
+  },
+  {
+    "rule_id": "PY007",
+    "line": 37,
+    "file": "sample_bad.py",
+    "snippet": "marshal.loads"
+  },
+  {
+    "rule_id": "PY060",
+    "line": 7,
+    "file": "sample_bad.py",
+    "snippet": "DEBUG = True"
+  },
+  {
+    "rule_id": "PY002",
+    "line": 1,
+    "file": "sample_bad.py",
+    "snippet": "exec"
+  },
+  {
+    "rule_id": "PY020",
+    "line": 1,
+    "file": "sample_bad.py",
+    "snippet": "secret"
+  }
+]

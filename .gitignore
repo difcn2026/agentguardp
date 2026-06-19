@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.egg-info/
+.env
+license-pool.json
+*.pem
+!agentguard/license_public.pem
+.DS_Store
+Thumbs.db

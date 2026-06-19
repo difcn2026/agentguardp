@@ -1,0 +1,39 @@
+[project]
+name = "agentguard2027"
+version = "0.3.0"
+description = "AgentGuard Pro — AI Code Security Scanner + Auto-Fixer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "XHLS Team" }]
+keywords = ["security", "code-review", "ai-agent", "sast", "llm", "auto-fix"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "rich>=13.0",
+    "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+agentguard = "agentguard.cli:main"
+agentguard-gui = "agentguard.gui:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agentguard", "agentguard.*", "fixer", "fixer.*"]
+exclude = ["fixtures", "fixtures.*"]
+
+[tool.setuptools.package-data]
+agentguard = ["license_public.pem"]
