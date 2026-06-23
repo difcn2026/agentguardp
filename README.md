@@ -1,0 +1,210 @@
+# AgentGuard
+
+**AI-powered code security scanner. Scan ? Review ? Fix in one command.**
+
+34 built-in rules + Bandit's 100+ engine. Local LLM review cuts false positives. One command: scan → review → fix.
+
+> *Pipeline decisions backed by 10 peer-reviewed papers. Not guessing. Not vibes. → [Read why](docs/paper-driven-architecture.md)*
+
+[![PyPI](https://img.shields.io/pypi/v/agentguard)](https://pypi.org/project/agentguard/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+
+---
+
+## Why AgentGuard
+
+SAST tools flood you with false positives and leave you to fix everything by hand. AgentGuard is different:
+
+| | Bandit | Semgrep | **AgentGuard** |
+|---|---|---|---|
+| Python rules | 100+ | Multi-lang | **34 + Bandit 100+** |
+| FP filtering | ❌ | ❌ | **ML + LLM review** |
+| Auto-fix | ❌ | ❌ | **✅ Pipeline** |
+| Local LLM | ❌ | ❌ | **✅ DeepSeek** |
+| Desktop GUI | ❌ | ❌ | **✅ Dark theme** |
+| Pricing | Free | Free/$40 | **Free + Pro $29/mo** |
+
+---
+
+## Quick Start
+
+```bash
+# Install
+pip install agentguard
+
+# Scan a project
+agentguard scan ./my-project
+
+# Full pipeline: scan → review → fix
+agentguard pipeline ./src --bandit --ds --mode safe --write
+
+# JSON output for CI/CD
+agentguard scan ./src --format json -o report.json
+
+# Desktop GUI
+agentguard serve
+# Open http://127.0.0.1:1099
+```
+
+
+
+
+---
+
+## Windows Desktop App
+
+Download the latest AgentGuard.exe from GitHub Releases: https://github.com/difcn2026/agentguard/releases
+
+**Windows SmartScreen warning?** This is normal for unsigned apps. Click **More info** then **Run anyway**. The exe is built with PyInstaller. SHA256 checksum on the Release page.
+
+---
+
+## Windows Desktop App
+
+Download the latest AgentGuard.exe from [GitHub Releases](https://github.com/difcn2026/agentguard/releases).
+
+> **Windows SmartScreen warning?** This is normal for unsigned apps. Click **More info** then **Run anyway**.
+> The exe is built with PyInstaller and verified by SHA256 checksum (see Release page).
+>
+> If Windows Defender flags it, submit the file to Microsoft Security Intelligence for review.
+
+
+---
+
+## Pipeline
+
+```
+34 rules + Bandit 100+
+        ↓
+    ML filter          ← Hardcoded literal detection, confidence threshold
+        ↓
+    DS Review           ← Local LLM classifies TP/FP per finding
+        ↓
+    Auto-fix            ← 10 of 17 rule types, safe mode default
+        ↓
+   Clean report
+```
+
+One command:
+```bash
+agentguard pipeline ./src --bandit --ds --mode safe
+```
+
+---
+
+## What It Detects
+
+- **Code Injection**: `eval()`, `exec()`, `os.system()`, `subprocess` shell=True
+- **Deserialization**: `pickle.loads()`, `yaml.load()`, `marshal.loads()`
+- **Secrets**: Hardcoded API keys, tokens, passwords, private keys
+- **Path Traversal**: Unsanitized file paths, directory traversal
+- **SSRF**: User-controlled URLs in HTTP requests
+- **Weak Crypto**: MD5, SHA1, ECB mode, insecure ciphers, weak random
+- **XML Attacks**: External entity injection, XPath injection, bomb expansion
+- **Insecure Protocols**: HTTP for sensitive data, FTP, Telnet
+
+---
+
+## Tiers
+
+| | Free | Pro ($29/mo) |
+|---|---|---|
+| 34 built-in rules | ✅ | ✅ |
+| Bandit 100+ rules | ✅ | ✅ |
+| ML false-positive filter | ✅ | ✅ |
+| LLM (DS) review | — | ✅ |
+| Pipeline auto-fix | — | ✅ |
+| Desktop GUI | ✅ | ✅ |
+| SARIF / JSON / MD output | ✅ | ✅ |
+| Files per scan | 100 | Unlimited |
+
+> 🚀 **PH Launch**: $149/year (first 100, code `PH2025`)
+
+---
+
+## [Labs] Preview
+
+We're testing an LLM confirmation agent that reviews SAST findings and confirms or rejects them with higher precision than ML alone. Currently in preview — swallowed_exception detector passes 3/3 on our test suite (confidence 0.95+). Full multi-agent pipeline coming in a future release.
+
+```bash
+# Enable [Labs] experimental features
+agentguard pipeline ./src --bandit --ds --labs
+```
+
+---
+
+## Architecture
+
+```
+agentguard/
+├── cli.py                    ← CLI (scan/pipeline/fix/serve)
+├── gui.py                    ← Desktop GUI (dark theme, port 1099)
+├── desktop.py                ← Web-based GUI server
+├── pipeline.py               ← scan → review → fix pipeline
+├── scanner/
+│   ├── code_scanner.py       ← Pattern + AST engine (34 rules)
+│   ├── bandit_adapter.py     ← Bandit 100+ rules integration
+│   ├── bandit_rules.py       ← Bandit rule ID mapping
+│   ├── ml_filter.py          ← Literal detection FP filter
+│   ├── llm_review.py         ← DS LLM TP/FP classification
+│   └── llm_heuristic.py      ← Multi-agent LLM (Labs preview)
+├── rules/
+│   └── python_rules.py       ← 34 security rules (7 categories)
+├── reporter/
+│   └── reporter.py           ← Terminal/JSON/SARIF/Markdown
+├── fixer/
+│   └── code_fixer.py         ← Auto-fix engine (10/17 rules)
+└── docs/
+    ├── marketing/            ← Landing copy, pricing, launch kit
+    ├── spec/                 ← Technical specs
+    └── eval/                 ← DS evaluation reports
+```
+
+---
+
+## Local-First
+
+Everything runs on your machine:
+
+- **DS LLM** at `127.0.0.1:57321` — code never leaves your network
+- **License server** can be self-hosted
+- **Zero telemetry**. We don't know you exist.
+
+---
+
+## Links
+
+- 📦 [PyPI](https://pypi.org/project/agentguard/)
+- 📖 [Docs](docs/)
+- 🧪 [Test Suite](tests/)
+
+---
+
+MIT License. Built by XHLS Team, 2026.
+
+---
+
+## Research Foundation
+
+Every major architecture decision is backed by peer-reviewed research — 15 papers and counting. Not opinions. Not guesses.
+
+| # | Paper | Insight | Impact |
+|---|-------|---------|--------|
+| 1 | QASecClaw | Multi-agent LLM > single prompt, F2 +23% | 5-Agent division |
+| 2 | SAST-Genius | LLM-generated findings → FP explosion | Labs not shipped |
+| 3 | Local LLM Bug Detection | Sliding window 20% overlap | Cross-function detection |
+| 4 | LLM4PFA | Path feasibility cuts 72-96% FPs | DS Review phase |
+| 5 | SecureFixAgent | Auto-fix needs self-validation | 10/17 safe mode |
+| 6 | Prompt vs FT | Fine-tuning > prompt engineering | Long-term FT roadmap |
+| 7 | AdaTaint | Neural-symbolic taint reasoning | Rule adaptation |
+| 8 | AgenticSCR | Agentic AI pre-commit +153% accuracy | Labs direction validated |
+| 9 | Small LM CWE | Local SLMs ~99% CWE accuracy | Local-first validated |
+| 10 | LLMs in Vuln Analysis | LLMs across full security lifecycle | Architecture validated |
+| 11 | PatchIsland | Agent ensemble repairs 91% vulns | Multi-agent auto-fix |
+| 12 | Vul-R2 | Reasoning LLM for vuln repair | FT dataset roadmap |
+| 13 | The Code Whisperer | AST+CFG+PDG+LLM alignment | Next-gen detection engine |
+| 14 | AutoSafeCoder | SAST+Fuzzing multi-agent | Runtime vuln roadmap |
+| 15 | JitVul Benchmark | 879 CVEs, ReAct > pure LLM | Standardized evaluation |
+
+> Full paper-driven architecture: [`docs/paper-driven-architecture.md`](docs/paper-driven-architecture.md) | DS Round 3 review: [`docs/eval/ds-round3-review-20260620.md`](docs/eval/ds-round3-review-20260620.md)
