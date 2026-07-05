@@ -149,7 +149,7 @@ class CodeScanner:
             except ImportError:
                 pass
 
-        # LLM secondary review (DeepSeek API)
+        # LLM secondary review (GLM-5.2 API)
         if self.use_llm and result.findings:
             try:
                 from .llm_review import LLMReviewer
@@ -158,6 +158,14 @@ class CodeScanner:
                 self._llm_reviewer.apply_review(result.findings)
             except ImportError:
                 pass
+
+        # P4: GLM-5.2 deep scan (Pro tier — finds what rules miss)
+        if self.tier == "pro" and getattr(self, 'use_llm_deep', False):
+            try:
+                deep_findings = self._glm_deep_scan(path)
+                result.findings.extend(deep_findings)
+            except Exception as e:
+                result.errors.append(f"GLM-5.2 deep scan error: {e}")
 
         # Recalculate filtered count after ML/LLM
         result.false_positives_filtered = sum(1 for f in result.findings if f.confidence < 0.5)
@@ -237,7 +245,16 @@ class CodeScanner:
 
     def _pattern_scan(self, filepath, source, lines, is_test):
         findings = []
+        # LLM-specific rules only apply to files that import LLM libraries
+        _LLM_RULES = {"PY050", "PY051", "PY052"}
+        _LLM_KEYWORDS = ("openai", "anthropic", "llm", "langchain", "transformers",
+                         "chat_completion", "prompt", "gemini", "zhipu", "glm",
+                         "ollama", "llama", "agent", "tool_call")
+        has_llm = any(kw in source.lower() for kw in _LLM_KEYWORDS)
+
         for regex, rule in self._compiled:
+            if rule.rule_id in _LLM_RULES and not has_llm:
+                continue
             for match in regex.finditer(source):
                 pos = match.start()
                 line_no = source.count("\n", 0, pos) + 1

@@ -389,48 +389,53 @@ PYTHON_RULES: List[Rule] = [
         fix="Replace Telnet with SSH (paramiko/fabric). Replace FTP with SFTP/SCP.",
         category="network",
     ),
+    # ═══ SQL + Secrets (v0.5) ═══
     Rule(
         rule_id="PY083", name="sql-injection",
         severity=Severity.CRITICAL,
-        description="SQL query constructed with string concatenation, vulnerable to SQL injection.",
+        description="SQL query with string concatenation, vulnerable to SQL injection.",
         cwe="CWE-89",
-        patterns=[
-            r"execute\s*\(.*SELECT.*\+",
-            r"execute\s*\(.*INSERT.*\+",
-            r"execute\s*\(.*UPDATE.*\+",
-            r"execute\s*\(.*DELETE.*\+",
-            r"SELECT.*\+\s*\w",
-            r"INSERT.*\+\s*\w",
-            r"UPDATE.*\+\s*\w",
-            r"DELETE.*\+\s*\w",
-        ],
-        fix="Use parameterized queries: cursor.execute('SELECT * FROM users WHERE name = ?', (username,))",
+        patterns=[r"execute\s*\(.*SELECT.*\+", r"execute\s*\(.*INSERT.*\+", r"execute\s*\(.*UPDATE.*\+", r"execute\s*\(.*DELETE.*\+"],
+        fix="Use parameterized queries.",
         category="injection",
     ),
-    Rule(
-        rule_id="PY084", name="hardcoded-password",
-        severity=Severity.CRITICAL,
-        description="Hardcoded password detected in source code.",
-        cwe="CWE-798",
-        patterns=[
-            r"DB_PASSWORD\s*=\s*\S+",
-            r"DATABASE_PASSWORD\s*=\s*\S+",
-            r"MYSQL_PASSWORD\s*=\s*\S+",
-            r"POSTGRES_PASSWORD\s*=\s*\S+",
-            r"REDIS_PASSWORD\s*=\s*\S+",
-            r"PASSWD\s*=\s*\S{4,}",
-            r"PWD\s*=\s*\S{4,}",
-        ],
-        fix="Load credentials from environment variables or a secrets manager. Never hardcode passwords.",
-        category="secrets",
-    ),
+    Rule(rule_id="PY084", name="hardcoded-password", severity=Severity.CRITICAL, description="Hardcoded password detected.", cwe="CWE-798", patterns=[r"DB_PASSWORD\s*=\s*\S+", r"MYSQL_PASSWORD\s*=\s*\S+", r"PASSWD\s*=\s*\S{4,}"], fix="Use env vars.", category="secrets"),
+    Rule(rule_id="PY090", name="jsonpickle-dangerous", severity=Severity.CRITICAL, description="jsonpickle.decode() allows code execution.", cwe="CWE-502", patterns=[r"jsonpickle\.decode\s*\("], fix="Use json.loads().", category="injection"),
+    Rule(rule_id="PY091", name="shelve-open", severity=Severity.HIGH, description="shelve.open() on untrusted data.", cwe="CWE-502", patterns=[r"shelve\.open\s*\("], fix="Use json.", category="injection"),
+    Rule(rule_id="PY093", name="ctypes-cdll", severity=Severity.HIGH, description="ctypes.CDLL with untrusted libs.", cwe="CWE-502", patterns=[r"ctypes\.CDLL\s*\("], fix="Load trusted libs only.", category="injection"),
+    Rule(rule_id="PY095", name="shutil-rmtree-unvalidated", severity=Severity.CRITICAL, description="shutil.rmtree with unvalidated path.", cwe="CWE-73", patterns=[r"shutil\.rmtree\s*\(.*\+"], fix="Validate paths.", category="path"),
+    Rule(rule_id="PY096", name="redirect-unvalidated", severity=Severity.HIGH, description="Open redirect via unvalidated URL.", cwe="CWE-601", patterns=[r"redirect\s*\(.*request"], fix="Validate URLs.", category="network"),
+    Rule(rule_id="PY097", name="cors-wildcard", severity=Severity.MEDIUM, description="CORS wildcard allows any origin.", cwe="CWE-942", patterns=[r"Access-Control-Allow-Origin.*\*"], fix="Restrict CORS.", category="network"),
+    Rule(rule_id="PY098", name="jwt-no-verify", severity=Severity.CRITICAL, description="JWT without signature verification.", cwe="CWE-345", patterns=[r"jwt\.decode.*verify.*False"], fix="Always verify JWT.", category="crypto"),
+    Rule(rule_id="PY099", name="jwt-hardcoded-secret", severity=Severity.CRITICAL, description="JWT with hardcoded secret.", cwe="CWE-798", patterns=[r"jwt\.encode.*secret", r"JWT_SECRET\s*=\s*\S+"], fix="Load from env.", category="secrets"),
+    Rule(rule_id="PY100", name="subprocess-shell-true", severity=Severity.CRITICAL, description="subprocess with shell=True.", cwe="CWE-78", patterns=[r"subprocess\..*shell\s*=\s*True"], fix="Use shell=False.", category="injection"),
+    Rule(rule_id="PY101", name="input-eval-chain", severity=Severity.HIGH, description="input() to eval/exec.", cwe="CWE-95", patterns=[r"eval\s*\(.*input"], fix="Never eval input.", category="injection"),
+    Rule(rule_id="PY102", name="lxml-unsafe-parse", severity=Severity.HIGH, description="lxml.etree.parse XXE risk.", cwe="CWE-611", patterns=[r"lxml\.etree\.parse\s*\("], fix="Use safe parser.", category="xml"),
+    Rule(rule_id="PY104", name="private-key-hardcoded", severity=Severity.CRITICAL, description="Private key in source code.", cwe="CWE-798", patterns=[r"BEGIN.*PRIVATE.*KEY"], fix="Never embed keys.", category="secrets"),
+    Rule(rule_id="PY105", name="ecb-mode", severity=Severity.MEDIUM, description="ECB mode reveals patterns.", cwe="CWE-327", patterns=[r"MODE_ECB"], fix="Use CBC/GCM.", category="crypto"),
+    Rule(rule_id="PY107", name="django-debug-true", severity=Severity.HIGH, description="DEBUG=True leaks info.", cwe="CWE-489", patterns=[r"DEBUG\s*=\s*True"], fix="Set DEBUG=False.", category="config"),
+    Rule(rule_id="PY108", name="django-secret-weak", severity=Severity.HIGH, description="Django SECRET_KEY hardcoded.", cwe="CWE-798", patterns=[r"SECRET_KEY\s*=\s*\S{8,}"], fix="Load from env.", category="secrets"),
+    Rule(rule_id="PY109", name="flask-debug-true", severity=Severity.HIGH, description="Flask debug=True exposes debugger.", cwe="CWE-489", patterns=[r"app\.run.*debug\s*=\s*True"], fix="Never debug=True.", category="config"),
+    Rule(rule_id="PY110", name="sql-fstring", severity=Severity.CRITICAL, description="SQL f-string injection.", cwe="CWE-89", patterns=[r"execute\s*\(\s*f.*SELECT"], fix="Use parameterized queries.", category="injection"),
+    Rule(rule_id="PY112", name="tarfile-extractall", severity=Severity.HIGH, description="tarfile.extractall path traversal.", cwe="CWE-22", patterns=[r"tarfile.*extractall"], fix="Validate paths.", category="path"),
+    Rule(rule_id="PY113", name="zipfile-extractall", severity=Severity.HIGH, description="zipfile.extractall path traversal.", cwe="CWE-22", patterns=[r"zipfile.*extractall"], fix="Validate paths.", category="path"),
+    Rule(rule_id="PY114", name="logging-sensitive", severity=Severity.MEDIUM, description="Logging sensitive data.", cwe="CWE-532", patterns=[r"log.*password", r"logger.*password"], fix="Never log secrets.", category="secrets"),
+    Rule(rule_id="PY116", name="random-seed-fixed", severity=Severity.MEDIUM, description="Fixed random seed predictable.", cwe="CWE-330", patterns=[r"random\.seed\s*\(\s*\d"], fix="Use secrets module.", category="crypto"),
+    Rule(rule_id="PY118", name="flask-send-file", severity=Severity.HIGH, description="Flask send_file path traversal.", cwe="CWE-22", patterns=[r"send_file\s*\(.*request"], fix="Validate paths.", category="path"),
+    Rule(rule_id="PY119", name="django-raw-sql", severity=Severity.CRITICAL, description="Django raw() SQL injection.", cwe="CWE-89", patterns=[r"\.raw\s*\(.*\+"], fix="Use parameterized.", category="injection"),
+    Rule(rule_id="PY120", name="unverified-ssl", severity=Severity.HIGH, description="SSL CERT_NONE.", cwe="CWE-295", patterns=[r"CERT_NONE"], fix="Never disable SSL.", category="network"),
+    Rule(rule_id="PY121", name="os-system-user-input", severity=Severity.CRITICAL, description="os.system with user input.", cwe="CWE-78", patterns=[r"os\.system\s*\(.*input"], fix="Use subprocess.", category="injection"),
+    Rule(rule_id="PY123", name="yaml-load-all", severity=Severity.HIGH, description="yaml.load_all without SafeLoader.", cwe="CWE-502", patterns=[r"yaml\.load_all\s*\("], fix="Use safe_load_all.", category="injection"),
+    Rule(rule_id="PY124", name="sql-format-method", severity=Severity.CRITICAL, description="SQL .format() injection.", cwe="CWE-89", patterns=[r"execute\s*\(.*\.format.*SELECT"], fix="Use parameterized.", category="injection"),
+    Rule(rule_id="PY125", name="paramiko-autoadd", severity=Severity.MEDIUM, description="Paramiko AutoAddPolicy.", cwe="CWE-295", patterns=[r"AutoAddPolicy"], fix="Use RejectPolicy.", category="network"),
+    Rule(rule_id="PY126", name="flask-secret-weak", severity=Severity.HIGH, description="Flask secret_key weak.", cwe="CWE-798", patterns=[r"secret_key\s*=\s*\S{4,}"], fix="Load from env.", category="secrets"),
 ]
 
 
 # ============================================================
 # Free tier: first 25 rules; Pro tier: all 50+
 # ============================================================
-FREE_RULE_COUNT = 20
+FREE_RULE_COUNT = 30
 
 
 def get_rules(tier: str = "free") -> List[Rule]:

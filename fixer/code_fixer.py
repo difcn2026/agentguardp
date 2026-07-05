@@ -456,7 +456,19 @@ def fix_file(file_path: str, findings: list, mode: str = "safe") -> Tuple[str, L
         results.extend(llm_results)
         imports_to_add.update(llm_imports)
 
-    return "\n".join(lines), results, imports_to_add
+    # ── P2: Syntax validation after fix ──
+    fixed_source = "\n".join(lines)
+    try:
+        import ast as _ast
+        _ast.parse(fixed_source)
+    except SyntaxError as _se:
+        # Fix introduced syntax error — revert this file
+        import sys as _sys
+        _sys.stderr.write(f"[code_fixer] Syntax error after fix: {_se} — reverting\n")
+        return src, [{"rule_id": "SYNTAX_CHECK", "line": 0, "fixed": False,
+                       "reason": f"Fix would break syntax: {_se}"}], set()
+
+    return fixed_source, results, imports_to_add
 
 
 def run(findings_input, mode: str = "safe", write: bool = False) -> dict:
