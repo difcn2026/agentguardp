@@ -204,127 +204,119 @@ TRANSFORMS: Dict[str, dict] = {
 
 
 
-# ── LLM-powered fix (GLM-5.2) ──
-# For rules marked manual:True, use GLM-5.2 to generate context-aware fixes.
+# ── Cloud LLM fix (GLM-5.2 via VPS) ──
+# For rules marked manual:True, send to cloud API for context-aware fix.
+# Cloud verifies license + calls GLM-5.2 server-side. Client cannot bypass.
 
-_LLM_API_URL = "http://127.0.0.1:57321/v1/chat/completions"
-_LLM_MODEL = "glm-5.2"
-_LLM_TIMEOUT = 30
-
-_LLM_FIX_PROMPT = """You are a security engineer fixing a Python code vulnerability.
-
-Vulnerability: {rule_id} - {description}
-Severity: {severity}
-Fix guidance: {fix_guidance}
-
-Current code (line {line_num}):
-```
-{code_line}
-```
-
-Full context (lines {ctx_start}-{ctx_end}):
-```
-{context}
-```
-
-Generate ONLY the fixed code for the relevant lines. Rules:
-1. Output ONLY the replacement code, no explanations, no markdown fences.
-2. Fix the vulnerability properly — do not just suppress it.
-3. Keep the code functional and minimal.
-4. If you need to add imports, put them on separate lines at the top.
-5. Preserve indentation and style of the original code.
-"""
+_CLOUD_FIX_URL = "https://agentguardp.com:8991/api/fix"
+_CLOUD_TIMEOUT = 60
 
 
-def _call_llm_fix(rule_id, description, severity, fix_guidance,
-                  code_line, context, line_num, ctx_start, ctx_end):
-    """Call GLM-5.2 to generate a context-aware fix. Returns fixed code or None."""
+def _cloud_fix_file(file_path, findings, rule_descriptions, source_lines):
+    """Send manual findings to cloud API for LLM fix. Returns (fixed_lines, results)."""
     import json as _json
     from urllib.request import Request as _Req
     from urllib.request import urlopen as _urlopen
-    from urllib.error import URLError as _URLError
 
-    prompt = _LLM_FIX_PROMPT.format(
-        rule_id=rule_id, description=description, severity=severity,
-        fix_guidance=fix_guidance, code_line=code_line,
-        context=context, line_num=line_num,
-        ctx_start=ctx_start, ctx_end=ctx_end,
-    )
-
-    payload = _json.dumps({
-        "model": _LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 1024,
-        "temperature": 0.0,
-    }).encode("utf-8")
-
-    req = _Req(_LLM_API_URL, data=payload, method="POST")
-    req.add_header("Content-Type", "application/json")
-
-    try:
-        with _urlopen(req, timeout=_LLM_TIMEOUT) as resp:
-            body = _json.loads(resp.read().decode("utf-8"))
-            return body["choices"][0]["message"]["content"].strip()
-    except (_URLError, _json.JSONDecodeError, KeyError, IndexError, Exception):
-        return None
-
-
-def _llm_fix_file(file_path, findings, rule_descriptions, source_lines):
-    """Use GLM-5.2 to fix findings marked as manual. Returns (fixed_lines, results)."""
     lines = list(source_lines)
     results = []
     imports_to_add = set()
 
-    for f in sorted(findings, key=lambda x: x.get("line", 0)):
+    # Get license key
+    from pathlib import Path as _P
+    license_path = _P.home() / ".agentguard" / "license.key"
+    license_key = ""
+    if license_path.exists():
+        license_key = license_path.read_text().strip()
+
+    # Check trial
+    if not license_key:
+        trial_path = _P.home() / ".agentguard" / "trial.json"
+        if trial_path.exists():
+            import json as _j2
+            from datetime import datetime as _dt
+            try:
+                trial = _j2.loads(trial_path.read_text())
+                install = _dt.strptime(trial.get("install_date",""), "%Y-%m-%d")
+                if (_dt.utcnow() - install).days < 14:
+                    # Trial active — use trial key format
+                    license_key = "AgentGuard-TRIAL"
+            except Exception:
+                pass
+
+    if not license_key:
+        for f in findings:
+            rid = f.get("rule_id", "")
+            if TRANSFORMS.get(rid, {}).get("manual"):
+                results.append({
+                    "rule_id": rid, "line": f.get("line",0), "fixed": False,
+                    "reason": "Pro license required for LLM fix (https://agentguardp.com)",
+                })
+        return lines, results, imports_to_add
+
+    # Prepare manual findings for cloud
+    manual_findings = []
+    for f in findings:
         rid = f.get("rule_id", "")
-        line_no = f.get("line", 0)
+        if TRANSFORMS.get(rid, {}).get("manual"):
+            manual_findings.append({"rule_id": rid, "line": f.get("line", 0)})
 
-        if line_no < 1 or line_no > len(lines):
-            continue
+    if not manual_findings:
+        return lines, results, imports_to_add
 
-        tx = TRANSFORMS.get(rid)
-        if not tx or not tx.get("manual"):
-            continue
+    # Call cloud API
+    payload = _json.dumps({
+        "license_key": license_key,
+        "findings": manual_findings,
+        "source_lines": source_lines,
+        "rule_descriptions": rule_descriptions,
+    }).encode("utf-8")
 
-        # Build context (5 lines before and after)
-        ctx_start = max(1, line_no - 5)
-        ctx_end = min(len(lines), line_no + 5)
-        context = "\n".join(lines[ctx_start-1:ctx_end])
-        code_line = lines[line_no - 1]
+    req = _Req(_CLOUD_FIX_URL, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
 
-        rule_desc = rule_descriptions.get(rid, {})
-        description = rule_desc.get("description", "")
-        severity = rule_desc.get("severity", "HIGH")
-        fix_guidance = rule_desc.get("fix", "")
+    try:
+        with _urlopen(req, timeout=_CLOUD_TIMEOUT) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        for f in manual_findings:
+            results.append({
+                "rule_id": f["rule_id"], "line": f["line"], "fixed": False,
+                "reason": f"Cloud fix unavailable: {e}",
+            })
+        return lines, results, imports_to_add
 
-        fixed_code = _call_llm_fix(
-            rid, description, severity, fix_guidance,
-            code_line, context, line_no, ctx_start, ctx_end,
-        )
+    if "error" in data:
+        for f in manual_findings:
+            results.append({
+                "rule_id": f["rule_id"], "line": f["line"], "fixed": False,
+                "reason": data["error"],
+            })
+        return lines, results, imports_to_add
 
-        if fixed_code and fixed_code != code_line:
-            # Parse the LLM output: could be single line or multi-line
+    # Apply cloud fixes
+    for r in data.get("results", []):
+        rid = r.get("rule_id", "")
+        line_no = r.get("line", 0)
+        if r.get("fixed") and r.get("fixed_code"):
+            fixed_code = r["fixed_code"]
             fixed_lines = fixed_code.split("\n")
             if len(fixed_lines) == 1:
                 lines[line_no - 1] = fixed_lines[0]
             else:
-                # Replace the target line with multiple lines
                 lines[line_no - 1:line_no] = fixed_lines
-
-            # Check for new imports
             for fl in fixed_lines:
                 if fl.strip().startswith("import ") or fl.strip().startswith("from "):
                     imports_to_add.add(fl.strip())
-
             results.append({
                 "rule_id": rid, "line": line_no, "fixed": True,
-                "original": code_line, "fixed": fixed_code,
-                "fixer": "llm-glm-5.2",
+                "original": r.get("original",""), "fixed": fixed_code,
+                "fixer": "cloud-glm-5.2",
             })
         else:
             results.append({
                 "rule_id": rid, "line": line_no, "fixed": False,
-                "reason": "LLM fix unavailable or no change",
+                "reason": r.get("reason", "cloud fix failed"),
             })
 
     return lines, results, imports_to_add
@@ -408,7 +400,7 @@ def fix_file(file_path: str, findings: list, mode: str = "safe") -> Tuple[str, L
         except Exception:
             rule_descs = {}
 
-        llm_lines, llm_results, llm_imports = _llm_fix_file(
+        llm_lines, llm_results, llm_imports = _cloud_fix_file(
             file_path, manual_findings, rule_descs, lines
         )
         lines = llm_lines
