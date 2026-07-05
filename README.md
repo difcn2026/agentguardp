@@ -6,7 +6,7 @@
 
 > *Pipeline decisions backed by 10 peer-reviewed papers. Not guessing. Not vibes. → [Read why](docs/paper-driven-architecture.md)*
 
-[![PyPI](https://img.shields.io/pypi/v/agentguard)](https://pypi.org/project/agentguard/)
+[![PyPI](https://img.shields.io/pypi/v/agentguardp)](https://pypi.org/project/agentguardp/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 
@@ -31,7 +31,7 @@ SAST tools flood you with false positives and leave you to fix everything by han
 
 ```bash
 # Install
-pip install agentguard
+pip install agentguardp
 
 # Scan a project
 agentguard scan ./my-project
@@ -175,7 +175,7 @@ Everything runs on your machine:
 
 ## Links
 
-- 📦 [PyPI](https://pypi.org/project/agentguard/)
+- 📦 [PyPI](https://pypi.org/project/agentguardp/)
 - 📖 [Docs](docs/)
 - 🧪 [Test Suite](tests/)
 
