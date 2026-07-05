@@ -54,7 +54,7 @@ agentguard serve
 
 ## Windows Desktop App
 
-Download the latest AgentGuard.exe from GitHub Releases: https://github.com/difcn2026/agentguard/releases
+Download the latest AgentGuard.exe from GitHub Releases: https://github.com/difcn2026/agentguardp/releases
 
 **Windows SmartScreen warning?** This is normal for unsigned apps. Click **More info** then **Run anyway**. The exe is built with PyInstaller. SHA256 checksum on the Release page.
 
@@ -62,7 +62,7 @@ Download the latest AgentGuard.exe from GitHub Releases: https://github.com/difc
 
 ## Windows Desktop App
 
-Download the latest AgentGuard.exe from [GitHub Releases](https://github.com/difcn2026/agentguard/releases).
+Download the latest AgentGuard.exe from [GitHub Releases](https://github.com/difcn2026/agentguardp/releases).
 
 > **Windows SmartScreen warning?** This is normal for unsigned apps. Click **More info** then **Run anyway**.
 > The exe is built with PyInstaller and verified by SHA256 checksum (see Release page).

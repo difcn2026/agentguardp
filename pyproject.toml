@@ -21,8 +21,8 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://agentguardp.com"
-Repository = "https://github.com/difcn2026/agentguard"
-"Bug Tracker" = "https://github.com/difcn2026/agentguard/issues"
+Repository = "https://github.com/difcn2026/agentguardp"
+"Bug Tracker" = "https://github.com/difcn2026/agentguardp/issues"
 PyPI = "https://pypi.org/project/agentguardp/"
 
 [project.optional-dependencies]
