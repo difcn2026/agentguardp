@@ -7,12 +7,6 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "XHLS Team" }]
 keywords = ["security", "code-review", "ai-agent", "sast", "llm", "auto-fix"]
-
-[project.urls]
-Homepage = "https://agentguardp.com"
-Repository = "https://github.com/difcn2026/agentguard"
-"Bug Tracker" = "https://github.com/difcn2026/agentguard/issues"
-PyPI = "https://pypi.org/project/agentguardp/"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -24,6 +18,12 @@ dependencies = [
     "rich>=13.0",
     "typer>=0.9",
 ]
+
+[project.urls]
+Homepage = "https://agentguardp.com"
+Repository = "https://github.com/difcn2026/agentguard"
+"Bug Tracker" = "https://github.com/difcn2026/agentguard/issues"
+PyPI = "https://pypi.org/project/agentguardp/"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov"]
