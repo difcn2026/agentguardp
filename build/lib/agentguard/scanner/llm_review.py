@@ -1,11 +1,11 @@
 """
 AgentGuard LLM Secondary Review v0.1
 =====================================
-Uses local DeepSeek API to re-classify security findings
+Uses local GLM-5.2 API to re-classify security findings
 as true_positive or false_positive, reducing SAST noise by ~80%.
 
 Reference: Feishu doc "AgentGuard ML 误报过滤 — 爬虫调研报告"
-Approach A: Local DS API (127.0.0.1:57321) — zero cost, data stays local.
+Approach A: Local GLM-5.2 API (127.0.0.1:57321) — zero cost, 1M context, data stays local.
 """
 
 import json
@@ -16,8 +16,8 @@ from urllib.error import URLError
 
 # ── Configuration ────────────────────────────────────────────────────
 
-DS_API_URL = "http://127.0.0.1:57321/v1/chat/completions"
-DS_MODEL = "deepseek-v4-flash"  # Fast model for classification
+DS_API_URL = "http://127.0.0.1:57321/v1/chat/completions"  # GLM-5.2 via Codex proxy
+DS_MODEL = "glm-5.2"  # GLM-5.2 via local Codex proxy (1M context)
 DS_TIMEOUT = 10  # seconds
 DS_MAX_TOKENS = 256
 DS_TEMPERATURE = 0.0  # Deterministic classification
@@ -41,7 +41,7 @@ Respond in JSON ONLY: {"classification": "TRUE_POSITIVE"|"FALSE_POSITIVE", "conf
 
 
 def _call_ds_api(messages: List[Dict], timeout: int = DS_TIMEOUT) -> Optional[Dict]:
-    """Call DeepSeek API and return parsed JSON response."""
+    """Call GLM-5.2 API and return parsed JSON response."""
     payload = json.dumps({
         "model": DS_MODEL,
         "messages": messages,
@@ -128,7 +128,7 @@ Classify this finding."""
 class LLMReviewer:
     """
     LLM-based secondary reviewer for SAST findings.
-    Uses local DeepSeek API to classify true/false positives.
+    Uses local GLM-5.2 API to classify true/false positives.
 
     Usage:
         reviewer = LLMReviewer()
@@ -156,7 +156,7 @@ class LLMReviewer:
         return dict(self._stats)
 
     def check_health(self) -> bool:
-        """Check if DS API is reachable."""
+        """Check if GLM-5.2 API is reachable."""
         try:
             test_msgs = [{"role": "user", "content": "Reply with exactly: {\"ok\":true}"}]
             result = _call_ds_api(test_msgs, timeout=5)

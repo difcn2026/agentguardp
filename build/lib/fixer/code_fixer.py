@@ -188,7 +188,187 @@ TRANSFORMS: Dict[str, dict] = {
         "imports": [],
         "category": "config",
     },
+    "PY083": {  # SQL injection — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "injection",
+    },
+    "PY084": {  # Hardcoded password — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "secrets",
+    },
+    # ═══ JavaScript/TypeScript ═══
+    "JS001": {  # eval — LLM fix (context-dependent)
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "injection",
+    },
+    "JS010": {  # innerHTML -> textContent
+        "confidence": 0.95,
+        "fix": lambda line: line.replace(".innerHTML", ".textContent"),
+        "imports": [],
+        "category": "xss",
+    },
+    "JS012": {  # document.write — manual
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "xss",
+    },
+    "JS030": {  # hardcoded password — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "secrets",
+    },
+    "JS040": {  # md5 -> sha256
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("md5", "sha256"),
+        "imports": [],
+        "category": "crypto",
+    },
+    "JS041": {  # sha1 -> sha256
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("sha1", "sha256"),
+        "imports": [],
+        "category": "crypto",
+    },
+    "JS060": {  # rejectUnauthorized: false -> true
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("rejectUnauthorized: false", "rejectUnauthorized: true"),
+        "imports": [],
+        "category": "network",
+    },
+    "JS020": {  # SQL injection — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "injection",
+    },
 }
+
+
+
+# ── Cloud LLM fix (GLM-5.2 via VPS) ──
+# For rules marked manual:True, send to cloud API for context-aware fix.
+# Cloud verifies license + calls GLM-5.2 server-side. Client cannot bypass.
+
+_CLOUD_FIX_URL = "https://agentguardp.com:8991/api/fix"
+_CLOUD_TIMEOUT = 60
+
+
+def _cloud_fix_file(file_path, findings, rule_descriptions, source_lines):
+    """Send manual findings to cloud API for LLM fix. Returns (fixed_lines, results)."""
+    import json as _json
+    from urllib.request import Request as _Req
+    from urllib.request import urlopen as _urlopen
+
+    lines = list(source_lines)
+    results = []
+    imports_to_add = set()
+
+    # Get license key
+    from pathlib import Path as _P
+    license_path = _P.home() / ".agentguard" / "license.key"
+    license_key = ""
+    if license_path.exists():
+        license_key = license_path.read_text().strip()
+
+    # Check trial
+    if not license_key:
+        trial_path = _P.home() / ".agentguard" / "trial.json"
+        if trial_path.exists():
+            import json as _j2
+            from datetime import datetime as _dt
+            try:
+                trial = _j2.loads(trial_path.read_text())
+                install = _dt.strptime(trial.get("install_date",""), "%Y-%m-%d")
+                if (_dt.utcnow() - install).days < 14:
+                    # Trial active — use trial key format
+                    license_key = "AgentGuard-TRIAL"
+            except Exception:
+                pass
+
+    if not license_key:
+        for f in findings:
+            rid = f.get("rule_id", "")
+            if TRANSFORMS.get(rid, {}).get("manual"):
+                results.append({
+                    "rule_id": rid, "line": f.get("line",0), "fixed": False,
+                    "reason": "Pro license required for LLM fix (https://agentguardp.com)",
+                })
+        return lines, results, imports_to_add
+
+    # Prepare manual findings for cloud
+    manual_findings = []
+    for f in findings:
+        rid = f.get("rule_id", "")
+        if TRANSFORMS.get(rid, {}).get("manual"):
+            manual_findings.append({"rule_id": rid, "line": f.get("line", 0)})
+
+    if not manual_findings:
+        return lines, results, imports_to_add
+
+    # Call cloud API
+    payload = _json.dumps({
+        "license_key": license_key,
+        "findings": manual_findings,
+        "source_lines": source_lines,
+        "rule_descriptions": rule_descriptions,
+    }).encode("utf-8")
+
+    req = _Req(_CLOUD_FIX_URL, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+
+    try:
+        with _urlopen(req, timeout=_CLOUD_TIMEOUT) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        for f in manual_findings:
+            results.append({
+                "rule_id": f["rule_id"], "line": f["line"], "fixed": False,
+                "reason": f"Cloud fix unavailable: {e}",
+            })
+        return lines, results, imports_to_add
+
+    if "error" in data:
+        for f in manual_findings:
+            results.append({
+                "rule_id": f["rule_id"], "line": f["line"], "fixed": False,
+                "reason": data["error"],
+            })
+        return lines, results, imports_to_add
+
+    # Apply cloud fixes
+    for r in data.get("results", []):
+        rid = r.get("rule_id", "")
+        line_no = r.get("line", 0)
+        if r.get("fixed") and r.get("fixed_code"):
+            fixed_code = r["fixed_code"]
+            fixed_lines = fixed_code.split("\n")
+            if len(fixed_lines) == 1:
+                lines[line_no - 1] = fixed_lines[0]
+            else:
+                lines[line_no - 1:line_no] = fixed_lines
+            for fl in fixed_lines:
+                if fl.strip().startswith("import ") or fl.strip().startswith("from "):
+                    imports_to_add.add(fl.strip())
+            results.append({
+                "rule_id": rid, "line": line_no, "fixed": True,
+                "original": r.get("original",""), "fixed": fixed_code,
+                "fixer": "cloud-glm-5.2",
+            })
+        else:
+            results.append({
+                "rule_id": rid, "line": line_no, "fixed": False,
+                "reason": r.get("reason", "cloud fix failed"),
+            })
+
+    return lines, results, imports_to_add
 
 
 def fix_file(file_path: str, findings: list, mode: str = "safe") -> Tuple[str, List[dict], set]:
@@ -257,7 +437,38 @@ def fix_file(file_path: str, findings: list, mode: str = "safe") -> Tuple[str, L
             for imp in reversed(new_imports):
                 lines.insert(last_import, imp)
 
-    return "\n".join(lines), results, imports_to_add
+    # ── LLM fix pass: for manual rules, try GLM-5.2 ──
+    manual_findings = [f for f in findings if TRANSFORMS.get(f.get("rule_id", ""), {}).get("manual")]
+    if manual_findings:
+        try:
+            from agentguard.rules.python_rules import PYTHON_RULES as _RULES
+            rule_descs = {}
+            for r in _RULES:
+                sev = r.severity.value if hasattr(r.severity, 'value') else str(r.severity)
+                rule_descs[r.rule_id] = {"description": r.description, "severity": sev, "fix": r.fix}
+        except Exception:
+            rule_descs = {}
+
+        llm_lines, llm_results, llm_imports = _cloud_fix_file(
+            file_path, manual_findings, rule_descs, lines
+        )
+        lines = llm_lines
+        results.extend(llm_results)
+        imports_to_add.update(llm_imports)
+
+    # ── P2: Syntax validation after fix ──
+    fixed_source = "\n".join(lines)
+    try:
+        import ast as _ast
+        _ast.parse(fixed_source)
+    except SyntaxError as _se:
+        # Fix introduced syntax error — revert this file
+        import sys as _sys
+        _sys.stderr.write(f"[code_fixer] Syntax error after fix: {_se} — reverting\n")
+        return src, [{"rule_id": "SYNTAX_CHECK", "line": 0, "fixed": False,
+                       "reason": f"Fix would break syntax: {_se}"}], set()
+
+    return fixed_source, results, imports_to_add
 
 
 def run(findings_input, mode: str = "safe", write: bool = False) -> dict:

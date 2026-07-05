@@ -28,6 +28,8 @@ def _get_base_dir():
 
 PUBLIC_KEY_PATH = _get_base_dir() / "license_public.pem"
 LICENSE_STORE = Path.home() / ".agentguard" / "license.key"
+TRIAL_STORE = Path.home() / ".agentguard" / "trial.json"
+TRIAL_DAYS = 14  # Built-in Pro trial: 14 days, then auto-downgrade to free
 
 
 @dataclass
@@ -109,18 +111,57 @@ def activate(key: str) -> bool:
     return True
 
 
+def _get_install_date() -> str:
+    """Get or set the first-install date for trial tracking."""
+    if TRIAL_STORE.exists():
+        try:
+            data = json.loads(TRIAL_STORE.read_text())
+            return data.get("install_date", "")
+        except Exception:
+            pass
+    TRIAL_STORE.parent.mkdir(parents=True, exist_ok=True)
+    install_date = datetime.utcnow().strftime("%Y-%m-%d")
+    TRIAL_STORE.write_text(json.dumps({"install_date": install_date}))
+    return install_date
+
+
+def get_trial_info() -> dict:
+    """Return trial status: {active, days_left, install_date}."""
+    install_date_str = _get_install_date()
+    try:
+        install_date = datetime.strptime(install_date_str, "%Y-%m-%d")
+        elapsed = (datetime.utcnow() - install_date).days
+        days_left = max(0, TRIAL_DAYS - elapsed)
+        return {
+            "active": days_left > 0,
+            "days_left": days_left,
+            "install_date": install_date_str,
+            "trial_days": TRIAL_DAYS,
+        }
+    except ValueError:
+        return {"active": False, "days_left": 0, "install_date": install_date_str, "trial_days": TRIAL_DAYS}
+
+
 def get_active_tier() -> str:
-    if not LICENSE_STORE.exists():
-        return "free"
-    key = LICENSE_STORE.read_text().strip()
-    if not key:
-        return "free"
-    status = verify_license(key)
-    return status.tier if status.valid else "free"
+    """Return active tier: pro if licensed, pro if in trial, else free."""
+    if LICENSE_STORE.exists():
+        key = LICENSE_STORE.read_text().strip()
+        if key:
+            status = verify_license(key)
+            if status.valid:
+                return status.tier
+    trial = get_trial_info()
+    if trial["active"]:
+        return "pro"
+    return "free"
 
 
 def deactivate() -> bool:
+    removed = False
     if LICENSE_STORE.exists():
         LICENSE_STORE.unlink()
-        return True
-    return False
+        removed = True
+    if TRIAL_STORE.exists():
+        TRIAL_STORE.unlink()
+        removed = True
+    return removed

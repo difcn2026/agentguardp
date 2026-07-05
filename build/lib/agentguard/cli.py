@@ -31,6 +31,8 @@ from .license_verify import (
     get_active_tier,
     deactivate as license_deactivate,
     get_machine_hash,
+    verify_license,
+    LICENSE_STORE,
 )
 from fixer.code_fixer import run as fixer_run
 from .pipeline import cmd_pipeline
@@ -46,6 +48,7 @@ def scan(
     tier: str = None,
     files: list = None,
     labs: bool = False,
+    bandit: bool = False,
 ):
     """Scan a directory or files for security issues."""
     if tier is None:
@@ -58,6 +61,14 @@ def scan(
 
     scanner = CodeScanner(tier=tier)
     result = scanner.scan_directory(str(target), files=files)
+    
+    if bandit:
+        try:
+            from .scanner.bandit_adapter import run_bandit
+            bandit_findings = run_bandit(str(target))
+            result.findings.extend(bandit_findings)
+        except Exception as e:
+            print(f"[Bandit] Engine not available: {e}", file=sys.stderr)
 
     reporters = {
         "terminal": terminal_report,
@@ -137,7 +148,8 @@ def main():
     scan_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     scan_parser.add_argument("--tier", default=None, choices=["free", "pro"],
                              help="License tier (default: auto-detect from activated license)")
-    scan_parser.add_argument("--version", action="version", version="AgentGuard v0.3.0")
+    scan_parser.add_argument("--version", action="version", version="AgentGuard v0.5.0")
+    scan_parser.add_argument("--bandit", action="store_true", help="Use Bandit engine (100+ rules) in addition to built-in")
     scan_parser.add_argument("--labs", action="store_true", help="Enable [Labs] LLM heuristic discovery (experimental)")
 
     # ---- activate ----
@@ -180,14 +192,37 @@ def main():
             verbose=args.verbose,
             tier=args.tier,
             labs=getattr(args, 'labs', False),
+            bandit=getattr(args, 'bandit', False),
         )
     elif args.command == "activate":
         license_activate(args.key)
     elif args.command == "status":
         tier = get_active_tier()
-        print(f"Tier      : {tier}")
-        print(f"Machine ID: {get_machine_hash()}")
-        print(f"Status    : {'Activated' if tier != 'free' else 'Free (no license)'}")
+        machine = get_machine_hash()
+        print(f"Machine ID: {machine}")
+        if LICENSE_STORE and Path(LICENSE_STORE).exists():
+            key = Path(LICENSE_STORE).read_text().strip()
+            status = verify_license(key)
+            if status.valid:
+                print(f"Tier      : {status.tier.upper()}")
+                print(f"Email     : {status.email}")
+                print(f"License ID: {status.license_id}")
+                print(f"Expiry    : {status.expiry} ({status.days_left} days left)")
+                print(f"Status    : Licensed")
+            else:
+                print(f"Tier      : FREE")
+                print(f"Status    : License invalid ({status.reason})")
+        else:
+            from .license_verify import get_trial_info
+            trial = get_trial_info()
+            if trial["active"]:
+                print(f"Tier      : PRO (Trial)")
+                print(f"Trial     : {trial['days_left']}/{trial['trial_days']} days remaining")
+                print(f"Status    : Trial active - upgrade at https://agentguardp.com")
+            else:
+                print(f"Tier      : FREE")
+                print(f"Trial     : Expired (was {trial['trial_days']} days)")
+                print(f"Status    : Free tier - upgrade at https://agentguardp.com")
     elif args.command == "deactivate":
         license_deactivate()
         print("License deactivated. Back to free tier.")

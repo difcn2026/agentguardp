@@ -87,7 +87,7 @@ def json_report(result: ScanResult) -> str:
     """JSON output for CI/CD integration."""
     return json.dumps({
         "tool": "AgentGuard",
-        "version": "0.3.0",
+        "version": "0.5.0",
         "timestamp": datetime.now(CST).isoformat(),
         "path": result.path,
         "files_scanned": result.files_scanned,
@@ -145,7 +145,7 @@ def sarif_report(result: ScanResult) -> str:
             "tool": {
                 "driver": {
                     "name": "AgentGuard",
-                    "version": "0.3.0",
+                    "version": "0.5.0",
                     "informationUri": "https://github.com/xhls/agentguard",
                     "rules": [{"id": rid, "name": rid} for rid in rules_set],
                 }

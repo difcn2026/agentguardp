@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from ..rules.python_rules import Rule, Severity, PYTHON_RULES, get_rules
+from ..ignore_config import IgnoreConfig
+from ..rules.js_rules import JS_RULES, JS_EXTENSIONS, get_js_rules
 
 
 @dataclass
@@ -83,6 +85,7 @@ class CodeScanner:
         self.max_files = max_files
         self.use_ml = True  # Enable ML false-positive filter
         self._ml_filter = None
+        self._ignore_config = IgnoreConfig.from_file()
         self.use_llm = False  # Enable LLM secondary review (requires DS API)
         self._llm_reviewer = None
         self._compiled: List[tuple] = []
@@ -134,6 +137,15 @@ class CodeScanner:
                 result.total_lines += self._count_lines(filepath)
             except Exception as e:
                 result.errors.append(f"Error scanning {filepath}: {e}")
+        # Apply ignore config — filter out ignored findings
+        if self._ignore_config and self._ignore_config.file_patterns or self._ignore_config and self._ignore_config.rule_ids or self._ignore_config and self._ignore_config.file_rules:
+            before = len(result.findings)
+            result.findings = [f for f in result.findings 
+                             if not self._ignore_config.should_ignore(f.file, f.rule_id)]
+            ignored = before - len(result.findings)
+            if ignored:
+                result.errors.append(f"{ignored} findings ignored by .agentguard-ignore")
+
         result.false_positives_filtered = sum(1 for f in result.findings if f.confidence < 0.5)
 
         # ML heuristic confidence rescoring
@@ -148,7 +160,7 @@ class CodeScanner:
             except ImportError:
                 pass
 
-        # LLM secondary review (DeepSeek API)
+        # LLM secondary review (GLM-5.2 API)
         if self.use_llm and result.findings:
             try:
                 from .llm_review import LLMReviewer
@@ -158,17 +170,35 @@ class CodeScanner:
             except ImportError:
                 pass
 
+        # P4: GLM-5.2 deep scan (Pro tier — finds what rules miss)
+        if self.tier == "pro" and getattr(self, 'use_llm_deep', False):
+            try:
+                deep_findings = self._glm_deep_scan(path)
+                result.findings.extend(deep_findings)
+            except Exception as e:
+                result.errors.append(f"GLM-5.2 deep scan error: {e}")
+
         # Recalculate filtered count after ML/LLM
+        # Apply ignore config — filter out ignored findings
+        if self._ignore_config and self._ignore_config.file_patterns or self._ignore_config and self._ignore_config.rule_ids or self._ignore_config and self._ignore_config.file_rules:
+            before = len(result.findings)
+            result.findings = [f for f in result.findings 
+                             if not self._ignore_config.should_ignore(f.file, f.rule_id)]
+            ignored = before - len(result.findings)
+            if ignored:
+                result.errors.append(f"{ignored} findings ignored by .agentguard-ignore")
+
         result.false_positives_filtered = sum(1 for f in result.findings if f.confidence < 0.5)
         return result
 
     def _collect_files(self, root: Path) -> List[Path]:
+        ALL_EXTS = self.PYTHON_EXTS | JS_EXTENSIONS
         # Single file: return directly
-        if root.is_file() and root.suffix in self.PYTHON_EXTS:
+        if root.is_file() and root.suffix in ALL_EXTS:
             return [root]
         files = []
         for entry in root.rglob("*"):
-            if entry.is_file() and entry.suffix in self.PYTHON_EXTS:
+            if entry.is_file() and entry.suffix in ALL_EXTS:
                 parts = set(entry.parts)
                 if not parts & self.SKIP_DIRS:
                     if entry.name in self.SKIP_FILES:
@@ -185,8 +215,13 @@ class CodeScanner:
             lines = source.splitlines()
         except Exception:
             return findings
-        findings.extend(self._pattern_scan(filepath, source, lines, is_test))
-        findings.extend(self._ast_scan(filepath, source, lines, is_test))
+
+        # Route by language: JS/TS files use JS rules, Python uses Python rules
+        if filepath.suffix in JS_EXTENSIONS:
+            findings.extend(self._pattern_scan_js(filepath, source, lines, is_test))
+        else:
+            findings.extend(self._pattern_scan(filepath, source, lines, is_test))
+            findings.extend(self._ast_scan(filepath, source, lines, is_test))
         findings.extend(self._file_checks(filepath, source))
 
         # Deduplicate: pattern scan + AST scan may flag same (rule_id, line)
@@ -200,9 +235,47 @@ class CodeScanner:
         return deduped
         return findings
 
+    def _pattern_scan_js(self, filepath, source, lines, is_test):
+        """Pattern scan for JavaScript/TypeScript files using JS rules."""
+        findings = []
+        js_rules = get_js_rules(self.tier)
+        compiled = []
+        for rule in js_rules:
+            for pat in rule.patterns:
+                compiled.append((re.compile(pat), rule))
+        for regex, rule in compiled:
+            for match in regex.finditer(source):
+                pos = match.start()
+                line_no = source.count("\n", 0, pos) + 1
+                col = pos - (source.rfind("\n", 0, pos) + 1)
+                snippet = ""
+                if 0 < line_no <= len(lines):
+                    snippet = lines[line_no - 1].strip()[:120]
+                    if self._is_suppressed(lines[line_no - 1]):
+                        continue
+                confidence = 1.0
+                if is_test:
+                    confidence = 0.5
+                findings.append(Finding(
+                    rule_id=rule.rule_id, severity=rule.severity,
+                    file=str(filepath), line=line_no, column=max(0, col),
+                    message=rule.description, code_snippet=snippet,
+                    fix=rule.fix, confidence=confidence))
+        return findings
+
     def _pattern_scan(self, filepath, source, lines, is_test):
         findings = []
+        # LLM-specific rules only apply to files that import LLM libraries
+        _LLM_RULES = {"PY050", "PY051", "PY052"}
+        _LLM_KEYWORDS = ("openai", "anthropic", "langchain", "transformers",
+                         "chat.completion", "chat_completion", "zhipuai", "glm-",
+                         "ollama", "llama-cpp", "from langchain", "import openai",
+                         "import anthropic", "ChatCompletion", "messages.*role.*assistant")
+        has_llm = any(kw in source.lower() for kw in _LLM_KEYWORDS)
+
         for regex, rule in self._compiled:
+            if rule.rule_id in _LLM_RULES and not has_llm:
+                continue
             for match in regex.finditer(source):
                 pos = match.start()
                 line_no = source.count("\n", 0, pos) + 1
@@ -294,6 +367,14 @@ class _SecurityVisitor(ast.NodeVisitor):
             column=node.col_offset or 0, message=msg,
             code_snippet=snippet, fix=rule.fix, confidence=confidence))
 
+    def _has_llm_context(self):
+        """Check if this file has LLM/AI context (imports, API calls)."""
+        _LLM_KW = ("openai", "anthropic", "langchain", "transformers",
+                    "chat_completion", "zhipuai", "glm-", "ollama",
+                    "import openai", "import anthropic", "ChatCompletion")
+        source_low = "\n".join(self.lines).lower()
+        return any(kw in source_low for kw in _LLM_KW)
+
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
             if node.func.id == "eval":
@@ -324,6 +405,9 @@ class _SecurityVisitor(ast.NodeVisitor):
         for value in node.values:
             if isinstance(value, ast.FormattedValue) and isinstance(value.value, ast.Name):
                 if value.value.id.lower() in ("input", "user_input", "query", "prompt"):
+                    # Only flag if this file has LLM context
+                    if not self._has_llm_context():
+                        continue
                     self._add_finding("PY050", node,
                         f"User input '{value.value.id}' in f-string.")
         self.generic_visit(node)
