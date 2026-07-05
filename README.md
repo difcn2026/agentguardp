@@ -22,7 +22,7 @@ SAST tools flood you with false positives and leave you to fix everything by han
 | Python rules | 100+ | Multi-lang | **36 + Bandit 100+** |
 | JavaScript/TS | - | Multi-lang | **14 rules** |
 | FP filtering | - | - | **GLM-5.2 review** |
-| Auto-fix | - | - | **GLM-5.2 cloud fix** |
+| Auto-fix | - | - | **GLM-5.2 AI fix (bring your own API key)** |
 | Self-validation | - | - | **Re-scan after fix** |
 | Pricing | Free | Free/$40 | **Free + Pro $29/mo** |
 
@@ -56,7 +56,7 @@ agentguard scan ./src --format json -o report.json
 agentguard scan ./src --format sarif -o report.sarif
 ```
 
-14-day Pro trial included. Full GLM-5.2 cloud fix activates automatically.
+14-day Pro trial included. Full GLM-5.2 AI fix (bring your own API key) activates automatically.
 
 ---
 
@@ -118,7 +118,7 @@ agentguard pipeline ./src
     ├── 2. VERIFY — GLM-5.2 reviews each finding (cloud, ~2s/finding)
     │              Filters false positives, confirms real threats
     │
-    ├── 3. FIX — Regex fixes (instant) + GLM-5.2 cloud fixes (context-aware)
+    ├── 3. FIX — Regex fixes (instant) + GLM-5.2 AI fix (bring your own API key)es (context-aware)
     │            SQL injection → parameterized queries
     │            Hardcoded passwords → environment variables
     │            eval() → ast.literal_eval()
@@ -149,7 +149,7 @@ prototype pollution, pickle deserialization, prompt injection, and more.
 |---|---|---|
 | **Free** | $0 | 20 rules + regex fix (offline) |
 | **Pro Trial** | $0 (14 days) | Full Pro, auto-activated on install |
-| **Pro** | $29/mo or $149/yr | All rules + Bandit + GLM-5.2 cloud fix |
+| **Pro** | $29/mo or $149/yr | All rules + Bandit + GLM-5.2 AI fix (bring your own API key) |
 
 Upgrade at [agentguardp.com](https://agentguardp.com)
 

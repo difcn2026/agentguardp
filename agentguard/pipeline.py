@@ -77,7 +77,7 @@ def _confirm_filter(findings):
     return confirmed, rejected, errors
 
 
-def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", use_bandit=False, use_labs=False):
+def pipeline(path=".", mode="dry-run", use_glm=False, write=False, tier="pro", use_bandit=False, use_labs=False):
     summary = {"path": path, "mode": mode, "engine": "bandit" if use_bandit else "builtin"}
 
     # Phase 1: Scan
@@ -115,17 +115,17 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
                 print(f"      CONFIRMED:{len(confirmed)}  REJECTED:{len(rejected)}  ERR:{len(cf_errors)}")
             if fp_removed > 0 and len(current) > 0:
                 print(f"      FP reduction: {fp_removed}/{len(current)} ({fp_removed/len(current):.0%})")
-            # With --ds, pass rejected to DS review; without --ds, keep conservative safety
-            passed_to_ds = confirmed + cf_errors + (rejected if use_ds else [])
-            if use_ds and rejected:
-                print(f"      Rejected findings passed to DS review: {len(rejected)}")
+            # With --ds, pass rejected to GLM-5.2 fix; without --ds, keep conservative safety
+            passed_to_ds = confirmed + cf_errors + (rejected if use_glm else [])
+            if use_glm and rejected:
+                print(f"      Rejected findings passed to GLM-5.2 fix: {len(rejected)}")
             current = passed_to_ds
             summary["confirmation"] = {"confirmed": len(confirmed), "rejected": len(rejected)}
 
             # P15 + P5 risk mitigation: low-confidence CONFIRMED → DS Review safety net
             CONFIDENCE_FLOOR = 0.7
             low_conf_confirmed = [f for f in confirmed if getattr(f, 'confidence', 1.0) < CONFIDENCE_FLOOR]
-            if low_conf_confirmed and use_ds:
+            if low_conf_confirmed and use_glm:
                 print(f"      [SAFETY] {len(low_conf_confirmed)} confirmed with confidence < {CONFIDENCE_FLOOR} → DS Review")
                 summary["confirmation"]["low_confidence_routed"] = len(low_conf_confirmed)
             elif low_conf_confirmed:
@@ -136,7 +136,7 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
         print(f"\n[2/4] Confirmation skipped (no findings)")
 
     # Phase 2.5: DS Review (fallback)
-    if use_ds and current:
+    if use_glm and current:
         print(f"\n[2.5] DS Review on {len(current)} remaining...")
         try:
             from .scanner.llm_review import review_finding
@@ -153,12 +153,12 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
                 else: unk.append(f)
             print(f"      TP:{len(tp)}  FP:{len(fp)}  UNK:{len(unk)}")
             current = tp + unk
-            summary["ds_review"] = {"tp": len(tp), "fp": len(fp), "unk": len(unk)}
+            summary["glm_fix"] = {"tp": len(tp), "fp": len(fp), "unk": len(unk)}
         except Exception as e:
             print(f"      DS unavailable ({e})")
     else:
-        status = "skipped (use --ds)" if not use_ds else "skipped"
-        print(f"\n[2.5] DS review {status}")
+        status = "skipped (use --ds)" if not use_glm else "skipped"
+        print(f"\n[2.5] GLM-5.2 fix {status}")
 
     # Phase 2.6: Labs
     if use_labs:
@@ -242,6 +242,6 @@ def pipeline(path=".", mode="dry-run", use_ds=False, write=False, tier="pro", us
 
 def cmd_pipeline(args):
     pipeline(
-        path=args.path, mode=args.mode, use_ds=args.ds, write=args.write,
+        path=args.path, mode=args.mode, use_glm=args.ds, write=args.write,
         use_bandit=getattr(args, "bandit", False), use_labs=getattr(args, "labs", False),
     )

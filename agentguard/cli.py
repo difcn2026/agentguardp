@@ -158,6 +158,11 @@ def main():
 
     # ---- status ----
     subparsers.add_parser("status", help="Show license status and machine hash")
+    # ---- config ----
+    config_parser = subparsers.add_parser("config", help="Configure AgentGuard settings")
+    config_parser.add_argument("--api-key", default="", help="Set GLM-5.2 API key (get from https://open.bigmodel.cn)")
+    config_parser.add_argument("--show", action="store_true", help="Show current configuration")
+
     subparsers.add_parser("serve", help="Start desktop web GUI")
 
     # ---- deactivate ----
@@ -235,6 +240,20 @@ def main():
             print(f"  [{r['rule_id']}] L{r['line']}: {r.get('reason', r.get('fixed', ''))}")
     elif args.command in ("pipeline", "auto-fix"):
         cmd_pipeline(args)
+    elif args.command == "config":
+        from .config import get_api_key, set_api_key
+        if args.api_key:
+            set_api_key(args.api_key)
+            print(f"API key saved. GLM-5.2 AI fix is now enabled.")
+        elif args.show:
+            key = get_api_key()
+            if key:
+                print(f"API key: {key[:8]}...{key[-4:]}")
+            else:
+                print("No API key configured. Run: agentguard config --api-key YOUR_KEY")
+        else:
+            print("Usage: agentguard config --api-key YOUR_KEY")
+            print("       agentguard config --show")
     elif args.command == "serve":
         desktop_serve()
     else:
