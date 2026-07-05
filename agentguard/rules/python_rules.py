@@ -389,13 +389,48 @@ PYTHON_RULES: List[Rule] = [
         fix="Replace Telnet with SSH (paramiko/fabric). Replace FTP with SFTP/SCP.",
         category="network",
     ),
+    Rule(
+        rule_id="PY083", name="sql-injection",
+        severity=Severity.CRITICAL,
+        description="SQL query constructed with string concatenation, vulnerable to SQL injection.",
+        cwe="CWE-89",
+        patterns=[
+            r"execute\s*\(.*SELECT.*\+",
+            r"execute\s*\(.*INSERT.*\+",
+            r"execute\s*\(.*UPDATE.*\+",
+            r"execute\s*\(.*DELETE.*\+",
+            r"SELECT.*\+\s*\w",
+            r"INSERT.*\+\s*\w",
+            r"UPDATE.*\+\s*\w",
+            r"DELETE.*\+\s*\w",
+        ],
+        fix="Use parameterized queries: cursor.execute('SELECT * FROM users WHERE name = ?', (username,))",
+        category="injection",
+    ),
+    Rule(
+        rule_id="PY084", name="hardcoded-password",
+        severity=Severity.CRITICAL,
+        description="Hardcoded password detected in source code.",
+        cwe="CWE-798",
+        patterns=[
+            r"DB_PASSWORD\s*=\s*\S+",
+            r"DATABASE_PASSWORD\s*=\s*\S+",
+            r"MYSQL_PASSWORD\s*=\s*\S+",
+            r"POSTGRES_PASSWORD\s*=\s*\S+",
+            r"REDIS_PASSWORD\s*=\s*\S+",
+            r"PASSWD\s*=\s*\S{4,}",
+            r"PWD\s*=\s*\S{4,}",
+        ],
+        fix="Load credentials from environment variables or a secrets manager. Never hardcode passwords.",
+        category="secrets",
+    ),
 ]
 
 
 # ============================================================
 # Free tier: first 25 rules; Pro tier: all 50+
 # ============================================================
-FREE_RULE_COUNT = 34
+FREE_RULE_COUNT = 20
 
 
 def get_rules(tier: str = "free") -> List[Rule]:

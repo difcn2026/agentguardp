@@ -46,6 +46,7 @@ def scan(
     tier: str = None,
     files: list = None,
     labs: bool = False,
+    bandit: bool = False,
 ):
     """Scan a directory or files for security issues."""
     if tier is None:
@@ -58,6 +59,14 @@ def scan(
 
     scanner = CodeScanner(tier=tier)
     result = scanner.scan_directory(str(target), files=files)
+    
+    if bandit:
+        try:
+            from .scanner.bandit_adapter import run_bandit
+            bandit_findings = run_bandit(str(target))
+            result.findings.extend(bandit_findings)
+        except Exception as e:
+            print(f"[Bandit] Engine not available: {e}", file=sys.stderr)
 
     reporters = {
         "terminal": terminal_report,
@@ -137,7 +146,8 @@ def main():
     scan_parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     scan_parser.add_argument("--tier", default=None, choices=["free", "pro"],
                              help="License tier (default: auto-detect from activated license)")
-    scan_parser.add_argument("--version", action="version", version="AgentGuard v0.3.0")
+    scan_parser.add_argument("--version", action="version", version="AgentGuard v0.5.0")
+    scan_parser.add_argument("--bandit", action="store_true", help="Use Bandit engine (100+ rules) in addition to built-in")
     scan_parser.add_argument("--labs", action="store_true", help="Enable [Labs] LLM heuristic discovery (experimental)")
 
     # ---- activate ----
@@ -180,6 +190,7 @@ def main():
             verbose=args.verbose,
             tier=args.tier,
             labs=getattr(args, 'labs', False),
+            bandit=getattr(args, 'bandit', False),
         )
     elif args.command == "activate":
         license_activate(args.key)
