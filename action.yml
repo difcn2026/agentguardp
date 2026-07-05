@@ -1,0 +1,47 @@
+name: "AgentGuard Security Scan"
+description: "Scan Python code for security vulnerabilities and auto-fix them"
+branding:
+  icon: "shield"
+  color: "red"
+inputs:
+  path:
+    description: "Directory to scan"
+    required: false
+    default: "."
+  format:
+    description: "Output format (sarif, json, terminal)"
+    required: false
+    default: "sarif"
+  mode:
+    description: "Scan only or scan+fix (scan, pipeline)"
+    required: false
+    default: "scan"
+  tier:
+    description: "License tier (free, pro)"
+    required: false
+    default: "free"
+outputs:
+  report:
+    description: "Path to the scan report"
+    value: ${{ steps.scan.outputs.report }}
+runs:
+  using: "composite"
+  steps:
+    - name: Install AgentGuard
+      run: pip install agentguardp
+      shell: bash
+    - name: Run AgentGuard
+      id: scan
+      run: |
+        if [ "${{ inputs.mode }}" = "pipeline" ]; then
+          agentguard pipeline ${{ inputs.path }} --mode dry-run --bandit
+        else
+          agentguard scan ${{ inputs.path }} --format ${{ inputs.format }} -o agentguard-report.${{ inputs.format }}
+        fi
+        echo "report=agentguard-report.${{ inputs.format }}" >> $GITHUB_OUTPUT
+      shell: bash
+    - name: Upload SARIF
+      if: inputs.format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: agentguard-report.sarif
