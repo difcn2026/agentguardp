@@ -247,9 +247,10 @@ class CodeScanner:
         findings = []
         # LLM-specific rules only apply to files that import LLM libraries
         _LLM_RULES = {"PY050", "PY051", "PY052"}
-        _LLM_KEYWORDS = ("openai", "anthropic", "llm", "langchain", "transformers",
-                         "chat_completion", "prompt", "gemini", "zhipu", "glm",
-                         "ollama", "llama", "agent", "tool_call")
+        _LLM_KEYWORDS = ("openai", "anthropic", "langchain", "transformers",
+                         "chat.completion", "chat_completion", "zhipuai", "glm-",
+                         "ollama", "llama-cpp", "from langchain", "import openai",
+                         "import anthropic", "ChatCompletion", "messages.*role.*assistant")
         has_llm = any(kw in source.lower() for kw in _LLM_KEYWORDS)
 
         for regex, rule in self._compiled:
@@ -346,6 +347,14 @@ class _SecurityVisitor(ast.NodeVisitor):
             column=node.col_offset or 0, message=msg,
             code_snippet=snippet, fix=rule.fix, confidence=confidence))
 
+    def _has_llm_context(self):
+        """Check if this file has LLM/AI context (imports, API calls)."""
+        _LLM_KW = ("openai", "anthropic", "langchain", "transformers",
+                    "chat_completion", "zhipuai", "glm-", "ollama",
+                    "import openai", "import anthropic", "ChatCompletion")
+        source_low = "\n".join(self.lines).lower()
+        return any(kw in source_low for kw in _LLM_KW)
+
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name):
             if node.func.id == "eval":
@@ -376,6 +385,9 @@ class _SecurityVisitor(ast.NodeVisitor):
         for value in node.values:
             if isinstance(value, ast.FormattedValue) and isinstance(value.value, ast.Name):
                 if value.value.id.lower() in ("input", "user_input", "query", "prompt"):
+                    # Only flag if this file has LLM context
+                    if not self._has_llm_context():
+                        continue
                     self._add_finding("PY050", node,
                         f"User input '{value.value.id}' in f-string.")
         self.generic_visit(node)
