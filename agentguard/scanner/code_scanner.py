@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from ..rules.python_rules import Rule, Severity, PYTHON_RULES, get_rules
+from ..rules.js_rules import JS_RULES, JS_EXTENSIONS, get_js_rules
 
 
 @dataclass
@@ -163,12 +164,13 @@ class CodeScanner:
         return result
 
     def _collect_files(self, root: Path) -> List[Path]:
+        ALL_EXTS = self.PYTHON_EXTS | JS_EXTENSIONS
         # Single file: return directly
-        if root.is_file() and root.suffix in self.PYTHON_EXTS:
+        if root.is_file() and root.suffix in ALL_EXTS:
             return [root]
         files = []
         for entry in root.rglob("*"):
-            if entry.is_file() and entry.suffix in self.PYTHON_EXTS:
+            if entry.is_file() and entry.suffix in ALL_EXTS:
                 parts = set(entry.parts)
                 if not parts & self.SKIP_DIRS:
                     if entry.name in self.SKIP_FILES:
@@ -185,8 +187,13 @@ class CodeScanner:
             lines = source.splitlines()
         except Exception:
             return findings
-        findings.extend(self._pattern_scan(filepath, source, lines, is_test))
-        findings.extend(self._ast_scan(filepath, source, lines, is_test))
+
+        # Route by language: JS/TS files use JS rules, Python uses Python rules
+        if filepath.suffix in JS_EXTENSIONS:
+            findings.extend(self._pattern_scan_js(filepath, source, lines, is_test))
+        else:
+            findings.extend(self._pattern_scan(filepath, source, lines, is_test))
+            findings.extend(self._ast_scan(filepath, source, lines, is_test))
         findings.extend(self._file_checks(filepath, source))
 
         # Deduplicate: pattern scan + AST scan may flag same (rule_id, line)
@@ -198,6 +205,34 @@ class CodeScanner:
                 seen.add(key)
                 deduped.append(f)
         return deduped
+        return findings
+
+    def _pattern_scan_js(self, filepath, source, lines, is_test):
+        """Pattern scan for JavaScript/TypeScript files using JS rules."""
+        findings = []
+        js_rules = get_js_rules(self.tier)
+        compiled = []
+        for rule in js_rules:
+            for pat in rule.patterns:
+                compiled.append((re.compile(pat), rule))
+        for regex, rule in compiled:
+            for match in regex.finditer(source):
+                pos = match.start()
+                line_no = source.count("\n", 0, pos) + 1
+                col = pos - (source.rfind("\n", 0, pos) + 1)
+                snippet = ""
+                if 0 < line_no <= len(lines):
+                    snippet = lines[line_no - 1].strip()[:120]
+                    if self._is_suppressed(lines[line_no - 1]):
+                        continue
+                confidence = 1.0
+                if is_test:
+                    confidence = 0.5
+                findings.append(Finding(
+                    rule_id=rule.rule_id, severity=rule.severity,
+                    file=str(filepath), line=line_no, column=max(0, col),
+                    message=rule.description, code_snippet=snippet,
+                    fix=rule.fix, confidence=confidence))
         return findings
 
     def _pattern_scan(self, filepath, source, lines, is_test):

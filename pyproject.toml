@@ -1,6 +1,6 @@
 [project]
 name = "agentguardp"
-version = "0.5.3"
+version = "0.6.0"
 description = "AgentGuard — AI Code Security Scanner + Auto-Fixer"
 readme = "README.md"
 requires-python = ">=3.10"

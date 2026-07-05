@@ -200,6 +200,55 @@ TRANSFORMS: Dict[str, dict] = {
         "manual": True,
         "category": "secrets",
     },
+    # ═══ JavaScript/TypeScript ═══
+    "JS001": {  # eval — LLM fix (context-dependent)
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "injection",
+    },
+    "JS010": {  # innerHTML -> textContent
+        "confidence": 0.95,
+        "fix": lambda line: line.replace(".innerHTML", ".textContent"),
+        "imports": [],
+        "category": "xss",
+    },
+    "JS012": {  # document.write — manual
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "xss",
+    },
+    "JS030": {  # hardcoded password — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "secrets",
+    },
+    "JS040": {  # md5 -> sha256
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("md5", "sha256"),
+        "imports": [],
+        "category": "crypto",
+    },
+    "JS041": {  # sha1 -> sha256
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("sha1", "sha256"),
+        "imports": [],
+        "category": "crypto",
+    },
+    "JS060": {  # rejectUnauthorized: false -> true
+        "confidence": 1.0,
+        "fix": lambda line: line.replace("rejectUnauthorized: false", "rejectUnauthorized: true"),
+        "imports": [],
+        "category": "network",
+    },
+    "JS020": {  # SQL injection — LLM fix
+        "confidence": 0.0,
+        "fix": None,
+        "manual": True,
+        "category": "injection",
+    },
 }
 
 
