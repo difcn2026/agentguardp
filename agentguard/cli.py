@@ -31,6 +31,8 @@ from .license_verify import (
     get_active_tier,
     deactivate as license_deactivate,
     get_machine_hash,
+    verify_license,
+    LICENSE_STORE,
 )
 from fixer.code_fixer import run as fixer_run
 from .pipeline import cmd_pipeline
@@ -196,9 +198,31 @@ def main():
         license_activate(args.key)
     elif args.command == "status":
         tier = get_active_tier()
-        print(f"Tier      : {tier}")
-        print(f"Machine ID: {get_machine_hash()}")
-        print(f"Status    : {'Activated' if tier != 'free' else 'Free (no license)'}")
+        machine = get_machine_hash()
+        print(f"Machine ID: {machine}")
+        if LICENSE_STORE and Path(LICENSE_STORE).exists():
+            key = Path(LICENSE_STORE).read_text().strip()
+            status = verify_license(key)
+            if status.valid:
+                print(f"Tier      : {status.tier.upper()}")
+                print(f"Email     : {status.email}")
+                print(f"License ID: {status.license_id}")
+                print(f"Expiry    : {status.expiry} ({status.days_left} days left)")
+                print(f"Status    : Licensed")
+            else:
+                print(f"Tier      : FREE")
+                print(f"Status    : License invalid ({status.reason})")
+        else:
+            from .license_verify import get_trial_info
+            trial = get_trial_info()
+            if trial["active"]:
+                print(f"Tier      : PRO (Trial)")
+                print(f"Trial     : {trial['days_left']}/{trial['trial_days']} days remaining")
+                print(f"Status    : Trial active - upgrade at https://agentguardp.com")
+            else:
+                print(f"Tier      : FREE")
+                print(f"Trial     : Expired (was {trial['trial_days']} days)")
+                print(f"Status    : Free tier - upgrade at https://agentguardp.com")
     elif args.command == "deactivate":
         license_deactivate()
         print("License deactivated. Back to free tier.")
