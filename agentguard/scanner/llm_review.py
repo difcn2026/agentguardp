@@ -16,7 +16,7 @@ from urllib.error import URLError
 
 # ── Configuration ────────────────────────────────────────────────────
 
-DS_API_URL = "http://127.0.0.1:57321/v1/chat/completions"  # GLM-5.2 via Codex proxy
+DS_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"  # GLM-5.2 via Codex proxy
 DS_MODEL = "glm-5.2"  # GLM-5.2 via local Codex proxy (1M context)
 DS_TIMEOUT = 10  # seconds
 DS_MAX_TOKENS = 256
@@ -41,6 +41,11 @@ Respond in JSON ONLY: {"classification": "TRUE_POSITIVE"|"FALSE_POSITIVE", "conf
 
 
 def _call_ds_api(messages: List[Dict], timeout: int = DS_TIMEOUT) -> Optional[Dict]:
+    """Call GLM-5.2 API using customer's own API key from config."""
+    from agentguard.config import get_api_key
+    api_key = get_api_key()
+    if not api_key:
+        return {"error": "No API key configured. Run: agentguard config --set-key YOUR_GLM_API_KEY"}
     """Call GLM-5.2 API and return parsed JSON response."""
     payload = json.dumps({
         "model": DS_MODEL,

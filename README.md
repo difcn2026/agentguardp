@@ -4,7 +4,7 @@
 
 Scan → GLM-5.2 verifies → GLM-5.2 fixes → self-validates. One command.
 
-[![PyPI](https://img.shields.io/pypi/v/agentguardp)](https://pypi.org/project/agentguardp/)
+[![PyPI](https://img.shields.io/pypi/v/agentguard)](https://pypi.org/project/agentguard/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 ![Powered by GLM-5.2](https://img.shields.io/badge/Powered%20by-GLM--5.2-orange)
@@ -41,7 +41,7 @@ GLM-5.2 outperforms Claude Code in security vulnerability detection at 1/6 the c
 
 ```bash
 # Install
-pip install agentguardp
+pip install agentguard
 
 # Scan a project (Python + JavaScript)
 agentguard scan ./my-project
@@ -151,7 +151,7 @@ prototype pollution, pickle deserialization, prompt injection, and more.
 | **Pro Trial** | $0 (14 days) | Full Pro, auto-activated on install |
 | **Pro** | $29/mo or $149/yr | All rules + Bandit + GLM-5.2 AI fix (bring your own API key) |
 
-Upgrade at [agentguardp.com](https://agentguardp.com)
+Upgrade at [agentguard.com](https://agentguard.com)
 
 ---
 
@@ -160,7 +160,7 @@ Upgrade at [agentguardp.com](https://agentguardp.com)
 Add AgentGuard to your CI/CD in 5 lines:
 
 ```yaml
-- uses: difcn2026/agentguardp@main
+- uses: difcn2026/agentguard@main
   with:
     path: .
     format: sarif
@@ -173,10 +173,10 @@ SARIF output integrates directly with GitHub Code Scanning.
 ## Install
 
 ```bash
-pip install agentguardp
+pip install agentguard
 ```
 
-**Windows Desktop App:** Download from [GitHub Releases](https://github.com/difcn2026/agentguardp/releases)
+**Windows Desktop App:** Download from [GitHub Releases](https://github.com/difcn2026/agentguard/releases)
 
 > SmartScreen warning? Click **More info** → **Run anyway**. Normal for unsigned apps.
 
@@ -184,9 +184,9 @@ pip install agentguardp
 
 ## Links
 
-- [PyPI](https://pypi.org/project/agentguardp/)
-- [GitHub](https://github.com/difcn2026/agentguardp)
-- [Website](https://agentguardp.com)
+- [PyPI](https://pypi.org/project/agentguard/)
+- [GitHub](https://github.com/difcn2026/agentguard)
+- [Website](https://agentguard.com)
 - [License: MIT](LICENSE)
 
 ---

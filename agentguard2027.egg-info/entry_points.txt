@@ -1,3 +1,0 @@
-[console_scripts]
-agentguard = agentguard.cli:main
-agentguard-gui = agentguard.gui:main

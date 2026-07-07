@@ -29,7 +29,7 @@ def _get_base_dir():
 PUBLIC_KEY_PATH = _get_base_dir() / "license_public.pem"
 LICENSE_STORE = Path.home() / ".agentguard" / "license.key"
 TRIAL_STORE = Path.home() / ".agentguard" / "trial.json"
-TRIAL_DAYS = 14  # Built-in Pro trial: 14 days, then auto-downgrade to free
+TRIAL_DAYS = 14  # 14-day Pro trial: user brings own API key
 
 
 @dataclass

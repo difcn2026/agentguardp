@@ -28,7 +28,7 @@ runs:
   using: "composite"
   steps:
     - name: Install AgentGuard
-      run: pip install agentguardp
+      run: pip install agentguard
       shell: bash
     - name: Run AgentGuard
       id: scan
