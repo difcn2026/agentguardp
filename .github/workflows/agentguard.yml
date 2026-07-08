@@ -9,7 +9,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    continue-on-error: true  # findings are informational, not CI blockers
+    # findings info only  # findings are informational, not CI blockers
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
