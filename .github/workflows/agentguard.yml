@@ -14,7 +14,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install AgentGuard
-        run: pip install agentguardp
+      - name: Install deps
+        run: pip install rich typer bandit
       - name: Run AgentGuard Scan
-        run: agentguard scan . || echo "Scan completed with findings"
+        run: |
+          PYTHONPATH=$PYTHONPATH:$(pwd)
+          python -m agentguard.cli scan . || true
