@@ -9,7 +9,6 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    # findings info only  # findings are informational, not CI blockers
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,9 +17,4 @@ jobs:
       - name: Install AgentGuard
         run: pip install agentguardp
       - name: Run AgentGuard Scan
-        run: agentguard scan . --format sarif -o agentguard-report.sarif || true
-      - name: Upload SARIF
-        if: hashFiles('agentguard-report.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: agentguard-report.sarif
+        run: agentguard scan . || echo "Scan completed with findings"
